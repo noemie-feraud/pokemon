@@ -1,0 +1,154 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+#
+# pygame : pour tout ce qui est affichage, événements, audio, clock
+# settings : pour les constantes (résolution, FPS, titre)
+# StateManager : pour gérer la pile d'états
+# AudioManager : pour la musique et les SFX
+# DayNightCycle : pour l'horloge jour/nuit
+# StateMenu : le premier état qu'on empile au lancement
+
+importer pygame
+importer SCREEN_WIDTH, SCREEN_HEIGHT, FPS, TITRE_FENETRE depuis config.settings
+importer StateManager depuis states.state_manager
+importer AudioManager depuis core.audio_manager
+importer DayNightCycle depuis core.day_night_cycle
+importer StateMenu depuis states.state_menu
+
+
+# =============================================================================
+# CLASSE GAME
+# =============================================================================
+#
+# C'est le point central du jeu. Il crée tout, il possède tout,
+# et il fait tourner la boucle principale.
+# Tous les états y accèdent via self.game_manager pour récupérer
+# ce dont ils ont besoin (screen, player, audio, etc.).
+
+CLASSE Game:
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+    #
+    # Initialise Pygame et crée tous les composants du jeu.
+    #
+    # L'ordre d'initialisation est important :
+    #   1. Pygame d'abord (sinon rien ne marche)
+    #   2. La fenêtre (les états en ont besoin pour dessiner)
+    #   3. Le clock (la boucle en a besoin pour le FPS)
+    #   4. Les managers (state, audio, day_night)
+    #   5. Le premier état (menu principal)
+    #
+    # player est à None au début. Il sera créé quand le joueur
+    # choisira son dresseur et son starter (dans StateMenu / CharacterSelect).
+
+    MÉTHODE __init__(self):
+        # Initialiser Pygame
+        pygame.init()
+
+        # Créer la fenêtre
+        self.screen ← pygame.display.set_mode(SCREEN_WIDTH, SCREEN_HEIGHT)
+        pygame.display.set_caption(TITRE_FENETRE)
+
+        # Horloge pour le FPS et le delta time
+        self.clock ← pygame.time.Clock()
+
+        # Le jeu tourne tant que running est True
+        self.running ← True
+
+        # Le joueur (créé plus tard, après le choix du dresseur)
+        self.player ← None
+
+        # Les managers
+        self.state_manager ← StateManager()
+        self.audio_manager ← AudioManager()
+        self.day_night_cycle ← DayNightCycle()
+
+        # On empile le menu principal comme premier état
+        # On lui passe self (le Game) pour qu'il puisse accéder à tout
+        self.state_manager.push(StateMenu(self))
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : run
+    # -----------------------------------------------------------------
+    #
+    # LA boucle principale. C'est ici que tout se passe.
+    # Elle tourne tant que self.running est True.
+    #
+    # À chaque frame :
+    #   1. On calcule le dt (delta time)
+    #   2. On récupère les événements Pygame
+    #   3. On vérifie si le joueur veut fermer la fenêtre
+    #   4. On délègue events → update → render au StateManager
+    #   5. On met à jour l'affichage
+    #   6. On vérifie si la pile d'états est vide (= le jeu est fini)
+    #
+    # Quand la boucle s'arrête, on appelle cleanup() pour tout fermer.
+
+    MÉTHODE run(self):
+        TANT QUE self.running EST True:
+
+            # --- DELTA TIME ---
+            # clock.tick(FPS) fait deux choses :
+            #   1. Attend le temps nécessaire pour maintenir 60 FPS
+            #   2. Renvoie le temps écoulé depuis le dernier tick en millisecondes
+            # On divise par 1000 pour avoir des secondes
+            dt ← self.clock.tick(FPS) / 1000.0
+
+            # --- EVENTS ---
+            # pygame.event.get() renvoie TOUS les événements depuis la dernière frame
+            # (touches pressées, relâchées, clics, fermeture fenêtre, etc.)
+            events ← pygame.event.get()
+
+            # --- QUIT ---
+            # On parcourt les événements pour vérifier si le joueur ferme la fenêtre.
+            # C'est géré ici et pas dans les états parce que c'est global :
+            # peu importe où on est dans le jeu, la croix doit marcher.
+            POUR CHAQUE event DANS events:
+                SI event.type == pygame.QUIT:
+                    self.running ← False
+
+            # --- DÉLÉGATION AU STATE MANAGER ---
+            # Le StateManager s'occupe de tout transmettre à l'état actif.
+            # On n'a pas besoin de savoir quel état c'est, c'est ça la force
+            # du State Pattern.
+            self.state_manager.handle_events(events)
+            self.state_manager.update(dt)
+            self.state_manager.render(self.screen)
+
+            # --- AFFICHAGE ---
+            # pygame.display.flip() prend tout ce qu'on a dessiné sur self.screen
+            # et l'affiche réellement à l'écran.
+            # Sans ça, on dessine "dans le vide" et rien ne s'affiche.
+            pygame.display.flip()
+
+            # --- VÉRIFICATION FIN DE JEU ---
+            # Si la pile d'états est vide, y'a plus rien à afficher.
+            # Ça arrive quand le joueur quitte depuis le menu principal par exemple.
+            SI self.state_manager.est_vide():
+                self.running ← False
+
+        # La boucle est finie, on nettoie
+        self.cleanup()
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : cleanup
+    # -----------------------------------------------------------------
+    #
+    # Appelée quand le jeu se ferme.
+    # Libère toutes les ressources Pygame proprement.
+    #
+    # Pourquoi c'est important :
+    #   - pygame.quit() ferme la fenêtre et libère la mémoire audio/vidéo
+    #   - Sans ça, sur certains OS la fenêtre reste ouverte en fond
+    #     ou l'audio continue de jouer
+    #
+    # On pourrait aussi sauvegarder automatiquement ici (sauvegarde de secours),
+    # mais c'est le boulot du SaveManager, pas de Game.
+
+    MÉTHODE cleanup(self):
+        pygame.quit()
