@@ -1,0 +1,195 @@
+# =============================================================================
+# CLASSE STATE MANAGER
+# =============================================================================
+#
+# Gère la pile d'états du jeu.
+# C'est le point central qui sait quel écran est actif et qui délègue
+# les appels handle_events / update / render à l'état du dessus de la pile.
+
+CLASSE StateManager:
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+    #
+    # On initialise une pile vide.
+    # La pile c'est juste une liste Python, on utilise append() pour push
+    # et pop() pour dépiler. C'est le moyen le plus simple en Python.
+
+    MÉTHODE __init__(self):
+        self.pile ← liste vide
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : état_actuel
+    # -----------------------------------------------------------------
+    #
+    # Propriété qui renvoie l'état au sommet de la pile.
+    # C'est un raccourci pour éviter d'écrire self.pile[-1] partout.
+    # Si la pile est vide, on renvoie None (ça veut dire que le jeu
+    # n'a pas encore démarré ou qu'il est en train de se fermer).
+
+    PROPRIÉTÉ état_actuel:
+        SI la pile est vide:
+            RETOURNER None
+        RETOURNER le dernier élément de la pile
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : est_vide
+    # -----------------------------------------------------------------
+    #
+    # Renvoie True si la pile est vide, False sinon.
+    # game.py utilise ça pour savoir si le jeu doit se fermer :
+    # si y'a plus d'état dans la pile, y'a plus rien à afficher → on quitte.
+
+    MÉTHODE est_vide(self):
+        RETOURNER longueur de la pile == 0
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : push
+    # -----------------------------------------------------------------
+    #
+    # Empile un nouvel état par-dessus le courant.
+    # L'état précédent est mis en pause, le nouveau devient actif.
+    #
+    # Cas d'usage :
+    #   - Ouvrir l'inventaire par-dessus l'exploration
+    #   - Lancer un combat depuis l'exploration
+    #   - Afficher un dialogue par-dessus l'exploration
+    #
+    # Séquence :
+    #   1. Si y'a un état actuel → on appelle son on_exit()
+    #   2. On ajoute le nouvel état sur la pile
+    #   3. On appelle on_enter() du nouvel état
+
+    MÉTHODE push(self, état):
+        SI la pile N'EST PAS vide:
+            état_actuel.on_exit()
+
+        ajouter état à la pile
+        état.on_enter()
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : pop
+    # -----------------------------------------------------------------
+    #
+    # Retire l'état du dessus et revient au précédent.
+    #
+    # Cas d'usage :
+    #   - Fermer l'inventaire → retour exploration
+    #   - Fin du combat → retour exploration
+    #   - Fermer le dialogue → retour exploration
+    #
+    # Séquence :
+    #   1. On retire l'état du dessus → on appelle son on_exit()
+    #   2. Si y'a un état en dessous → on appelle son on_enter()
+    #      (il se "réveille")
+    #
+    # Sécurité : si la pile est vide, on fait rien (pas de crash).
+
+    MÉTHODE pop(self):
+        SI la pile est vide:
+            RETOURNER
+
+        état_retiré ← retirer le dernier de la pile
+        état_retiré.on_exit()
+
+        SI la pile N'EST PAS vide:
+            état_actuel.on_enter()
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : change
+    # -----------------------------------------------------------------
+    #
+    # Remplace l'état actuel par un autre.
+    # C'est un pop + push combiné, sauf qu'on ne réveille pas l'état
+    # du dessous (parce qu'il reste en dessous).
+    #
+    # Cas d'usage :
+    #   - Menu principal → Exploration (on remplace, on revient pas au menu)
+    #   - Game Over → Menu principal (pareil)
+    #
+    # Séquence :
+    #   1. On retire l'état actuel → on appelle son on_exit()
+    #   2. On ajoute le nouvel état à la même position → on appelle son on_enter()
+
+    MÉTHODE change(self, état):
+        SI la pile N'EST PAS vide:
+            état_retiré ← retirer le dernier de la pile
+            état_retiré.on_exit()
+
+        ajouter état à la pile
+        état.on_enter()
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : handle_events
+    # -----------------------------------------------------------------
+    #
+    # Délègue les événements à l'état du sommet UNIQUEMENT.
+    # On veut pas que le joueur bouge sur la map pendant qu'il est
+    # dans l'inventaire.
+    #
+    # Si la pile est vide, on fait rien.
+
+    MÉTHODE handle_events(self, events):
+        SI la pile est vide:
+            RETOURNER
+
+        état_actuel.handle_events(events)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : update
+    # -----------------------------------------------------------------
+    #
+    # Même logique : on update que l'état du sommet.
+    # L'exploration se fige quand le combat est actif,
+    # c'est le comportement voulu.
+
+    MÉTHODE update(self, dt):
+        SI la pile est vide:
+            RETOURNER
+
+        état_actuel.update(dt)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : render
+    # -----------------------------------------------------------------
+    #
+    # Là c'est plus subtil à cause de la transparence.
+    #
+    # Si l'état du dessus est transparent (ex: inventaire), on doit
+    # aussi dessiner ce qu'il y a en dessous (ex: exploration).
+    #
+    # Algorithme :
+    #   1. On part du sommet de la pile
+    #   2. On descend tant que l'état est transparent
+    #   3. On note à partir de quel index on doit dessiner
+    #   4. On remonte en dessinant chaque état dans l'ordre
+    #
+    # Exemple :
+    #   pile = [Exploration, Dialogue, Inventaire]
+    #   Inventaire est transparent → on descend
+    #   Dialogue est transparent → on descend
+    #   Exploration n'est PAS transparent → on s'arrête
+    #   On dessine : Exploration, puis Dialogue, puis Inventaire
+
+    MÉTHODE render(self, screen):
+        SI la pile est vide:
+            RETOURNER
+
+        # Trouver l'état le plus bas à dessiner
+        index_debut ← index du sommet de la pile
+
+        TANT QUE index_debut > 0 ET pile[index_debut].transparent EST True:
+            index_debut ← index_debut - 1
+
+        # Dessiner du bas vers le haut
+        POUR index ALLANT DE index_debut AU sommet de la pile:
+            pile[index].render(screen)
