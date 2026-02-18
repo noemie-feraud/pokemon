@@ -1,0 +1,146 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+#
+# On importe ABC et abstractmethod depuis le module abc de Python.
+# ABC = Abstract Base Class, c'est ce qui permet de rendre la classe abstraite.
+# abstractmethod = décorateur qu'on met sur les méthodes que les classes filles
+# DOIVENT implémenter. Si elles le font pas → erreur à l'instanciation.
+
+importer ABC, abstractmethod depuis abc
+
+
+# =============================================================================
+# CLASSE STATE
+# =============================================================================
+#
+# Classe abstraite = on ne crée jamais un objet State() directement.
+# Elle sert de modèle pour tous les états du jeu.
+#
+# Chaque état (menu, exploration, combat...) hérite de cette classe
+# et implémente les 3 méthodes à sa manière.
+
+CLASSE State (hérite de ABC):
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+    #
+    # game_manager : référence vers l'objet principal du jeu.
+    #   Permet à n'importe quel état d'accéder à tout ce dont il a besoin :
+    #   - changer d'état (game_manager.state_manager.push / pop)
+    #   - accéder au joueur (game_manager.player)
+    #   - accéder à l'écran Pygame (game_manager.screen)
+    #   - etc.
+    #
+    # transparent : est-ce que l'état du dessous doit se dessiner aussi ?
+    #   False par défaut → l'état prend tout l'écran (menu, combat, exploration)
+    #   True → l'état se superpose (inventaire, pokédex, dialogue)
+    #   Le StateManager utilise cet attribut pour savoir s'il faut rendre
+    #   plusieurs états en même temps.
+
+    MÉTHODE __init__(self, game_manager):
+        self.game_manager ← game_manager
+        self.transparent ← False
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE ABSTRAITE : handle_events
+    # -----------------------------------------------------------------
+    #
+    # Appelée à chaque frame par la boucle principale.
+    # Reçoit la liste des événements Pygame (pygame.event.get()).
+    #
+    # C'est ici que chaque état gère les inputs du joueur :
+    #   - StateMenu : navigation haut/bas, validation avec Entrée
+    #   - StateExploration : déplacement ZQSD ou flèches
+    #   - StateCombat : sélection d'action, choix d'attaque
+    #
+    # events : liste d'objets pygame.event.Event
+
+    MÉTHODE ABSTRAITE handle_events(self, events):
+        passer  # les classes filles implémentent ça
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE ABSTRAITE : update
+    # -----------------------------------------------------------------
+    #
+    # Appelée à chaque frame après handle_events.
+    # Met à jour toute la logique de l'état.
+    #
+    # dt = delta time en secondes (temps depuis la dernière frame).
+    # Exemple : à 60 FPS, dt ≈ 0.0167 seconde.
+    #
+    # On utilise dt pour que le jeu tourne à la même vitesse
+    # peu importe le FPS réel. Si une frame prend plus longtemps,
+    # dt est plus grand et le mouvement compense.
+    #
+    # Exemples d'utilisation :
+    #   - StateExploration : déplacer le joueur de vitesse × dt pixels
+    #   - StateCombat : animer les barres de PV qui descendent
+    #   - DayNightCycle : avancer l'horloge de dt × RATIO_TEMPS
+
+    MÉTHODE ABSTRAITE update(self, dt):
+        passer  # les classes filles implémentent ça
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE ABSTRAITE : render
+    # -----------------------------------------------------------------
+    #
+    # Appelée à chaque frame après update.
+    # Dessine tout ce qui concerne cet état sur la surface screen.
+    #
+    # screen = la surface Pygame principale (celle créée par pygame.display.set_mode)
+    #
+    # Important : l'ordre d'appel compte.
+    # Si un état est transparent (ex: inventaire par-dessus exploration),
+    # le StateManager appelle d'abord render() de l'exploration,
+    # puis render() de l'inventaire par-dessus.
+    #
+    # Chaque état ne s'occupe QUE de son propre rendu.
+    # C'est pas au combat de dessiner la map, c'est pas à l'exploration
+    # de dessiner le menu. Séparation des responsabilités.
+
+    MÉTHODE ABSTRAITE render(self, screen):
+        passer  # les classes filles implémentent ça
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : on_enter
+    # -----------------------------------------------------------------
+    #
+    # Appelée UNE SEULE FOIS quand on entre dans cet état.
+    # Pas abstraite → pas obligatoire. Les classes filles la redéfinissent
+    # seulement si elles en ont besoin.
+    #
+    # Sert à initialiser des trucs spécifiques à l'état :
+    #   - StateCombat : lancer la musique de combat, initialiser les Pokémon
+    #   - StateExploration : reprendre la musique d'exploration
+    #   - StateShop : charger le catalogue de la boutique
+    #
+    # C'est différent du constructeur (__init__) :
+    #   - __init__ est appelé quand l'objet est CRÉÉ
+    #   - on_enter est appelé quand l'état DEVIENT ACTIF
+    #   Un état peut être créé une fois et réactivé plusieurs fois.
+
+    MÉTHODE on_enter(self):
+        passer  # rien par défaut, les classes filles redéfinissent si besoin
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : on_exit
+    # -----------------------------------------------------------------
+    #
+    # Appelée UNE SEULE FOIS quand on quitte cet état.
+    # Même logique que on_enter, mais à la sortie.
+    #
+    # Sert à nettoyer des trucs :
+    #   - StateCombat : arrêter la musique de combat
+    #   - StateExploration : sauvegarder la position du joueur
+    #
+    # Pas abstraite non plus → optionnelle.
+
+    MÉTHODE on_exit(self):
+        passer  # rien par défaut, les classes filles redéfinissent si besoin
