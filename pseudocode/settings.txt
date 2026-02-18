@@ -1,0 +1,311 @@
+# =============================================================================
+# AFFICHAGE
+# =============================================================================
+#
+# La fenêtre fait 1024×768 pixels.
+# On a choisi cette résolution parce que :
+#   - C'est un ratio 4:3 comme la GBA, ça colle avec notre style top-down rétro
+#   - C'est divisible par 32 (notre taille de tile) → 1024/32 = 32, 768/32 = 24
+#     Donc pas de pixel coupé en bord d'écran, tout tombe juste
+#   - C'est assez grand pour être confortable sur un écran moderne
+#
+# Les tiles font 32×32 pixels.
+# On a hésité entre 16, 32 et 64. On est parti sur 32 parce que :
+#   - C'est le standard dans les tutos Pygame (Clear Code, KidsCanCode...)
+#   - La plupart des tilesets gratuits sont en 32×32
+#   - 16 c'était trop petit (illisible), 64 trop gros (trop peu de tiles visibles)
+#   - Avec 1024×768 ça nous donne 32×24 tiles visibles, c'est largement suffisant
+#
+# FPS à 60, c'est le standard Pygame, pas de raison de faire autrement.
+
+LARGEUR_ECRAN ← 1024
+HAUTEUR_ECRAN ← 768
+TAILLE_TILE ← 32
+FPS ← 60
+TITRE_FENETRE ← "Pokémon La Plateforme"
+
+
+# =============================================================================
+# GRILLE CALCULÉE
+# =============================================================================
+#
+# Ça c'est juste des valeurs qu'on déduit des constantes au-dessus.
+# On les pose ici pour pas avoir à recalculer à chaque fois dans le code.
+# camera.py en a besoin pour savoir combien de tiles dessiner,
+# map_manager.py aussi pour optimiser le rendu.
+
+TILES_EN_LARGEUR ← LARGEUR_ECRAN / TAILLE_TILE      # = 32
+TILES_EN_HAUTEUR ← HAUTEUR_ECRAN / TAILLE_TILE       # = 24
+
+
+# =============================================================================
+# POKÉMON & ÉQUIPE
+# =============================================================================
+#
+# Taille max de l'équipe : 6, c'est classique Pokémon et c'est dans notre doc.
+# Si l'équipe est pleine et qu'on capture un Pokémon, il part au stockage.
+# → Utilisé par team.py et capture_system.py
+#
+# On a 54 Pokémon au total (18 types × 3 stades d'évolution).
+# → Utilisé par pokedex_screen.py pour afficher la progression (ex: "12/54")
+#
+# Le nombre d'attaques dépend du stade d'évolution :
+#   - Stade 1 → 2 attaques (le Pokémon débute, options limitées)
+#   - Stade 2 → 3 attaques (il grandit, plus de choix en combat)
+#   - Stade 3 → 4 attaques (forme finale, kit complet)
+# On trouvait ça plus intéressant qu'un nombre fixe parce que ça donne
+# une vraie raison de faire évoluer ses Pokémon au-delà des stats.
+# Quand un Pokémon évolue, il apprend sa nouvelle attaque automatiquement.
+# → Utilisé par pokemon.py et combat_ui.py
+
+TAILLE_MAX_EQUIPE ← 6
+TOTAL_POKEMON ← 54
+TOTAL_TYPES ← 18
+STADES_EVOLUTION ← 3
+ATTAQUES_PAR_STADE ← {
+    1: 2,
+    2: 3,
+    3: 4
+}
+
+
+# =============================================================================
+# COMBAT
+# =============================================================================
+#
+# Chance de louper : 5%.
+# Avant chaque attaque, on tire un nombre entre 0 et 1.
+# Si c'est en dessous de 0.05 → l'attaque rate, message "L'attaque a échoué !"
+# On a pris 5% parce que dans les vrais Pokémon la plupart des attaques
+# ont 95-100% de précision. 10% ou 15% c'était trop frustrant pour le joueur.
+# → Utilisé par damage_calculator.py
+#
+# Dégâts minimum : 1.
+# Même si un Pokémon a une défense de ouf, il prend toujours au moins 1 dégât.
+# Sans ça, un tank serait littéralement invincible et le combat serait bloqué.
+# C'est aussi dans notre doc technique : "Le minimum de dégâts est 1".
+# → Utilisé par damage_calculator.py
+#
+# Ordre de combat : aléatoire à chaque tour.
+# On n'a pas de stat vitesse dans notre modèle de Pokémon (on a juste
+# PV, attaque, défense), donc on tire au sort qui joue en premier.
+# Ça rajoute un peu d'incertitude, c'est pas mal tactiquement.
+# → Utilisé par combat.py
+
+CHANCE_MISS ← 0.05
+DEGATS_MINIMUM ← 1
+ORDRE_COMBAT ← "aleatoire"
+
+
+# =============================================================================
+# CAPTURE
+# =============================================================================
+#
+# Quand on lance une ball en combat sauvage, on tire un nombre entre 0 et 1.
+# Si c'est en dessous du taux → capture réussie.
+#
+# Exemple : Super Ball = 0.60, donc 60% de chance que ça marche.
+# Master Ball = 1.0 = 100%, capture garantie. Mais elle est très rare.
+#
+# Ces taux viennent directement de notre doc de brainstorming.
+# → Utilisé par capture_system.py et pokeball.py
+
+TAUX_CAPTURE ← {
+    "pokeball":    0.30,
+    "super_ball":  0.60,
+    "hyper_ball":  0.80,
+    "master_ball": 1.00
+}
+
+
+# =============================================================================
+# CYCLE JOUR / NUIT
+# =============================================================================
+#
+# Le jeu a un cycle jour/nuit accéléré : 24h en jeu = 1h en vrai.
+#
+# Le temps est stocké en minutes de jeu, de 0 à 1439 :
+#   0    = minuit
+#   360  = 6h00 (début du jour)
+#   720  = midi
+#   1200 = 20h00 (début de la nuit)
+#   1439 = 23h59, après ça repart à 0
+#
+# Le RATIO_TEMPS c'est le truc clé : chaque seconde réelle = 0.4 minute de jeu.
+# Dans le code, à chaque frame on fait :
+#   temps_jeu += delta_time_en_secondes × RATIO_TEMPS
+# → Utilisé par day_night_cycle.py
+#
+# La pénalité jour/nuit : -20% sur l'attaque ou la défense.
+# Si un Pokémon diurne se bat de nuit (ou nocturne de jour), une de ses stats
+# est multipliée par 0.80. Ça force le joueur à adapter son équipe.
+# On a choisi 20% parce que 10% c'était pas assez visible et 30% trop punitif.
+# → Utilisé par damage_calculator.py
+
+DEBUT_JOUR ← 360
+DEBUT_NUIT ← 1200
+DUREE_CYCLE_JEU ← 1440
+DUREE_CYCLE_REEL ← 3600
+RATIO_TEMPS ← DUREE_CYCLE_JEU / DUREE_CYCLE_REEL
+PENALITE_JOUR_NUIT ← 0.20
+
+
+# =============================================================================
+# ÉCONOMIE
+# =============================================================================
+#
+# On a une seule monnaie dans le jeu : les crédits.
+# Ils servent à acheter des objets en boutique ET à payer l'entrée du tournoi.
+# Du coup le joueur doit faire des choix : est-ce qu'il claque tout en potions
+# ou il économise pour le tournoi ? C'est cette tension qui rend le truc
+# stratégique.
+#
+# Ce qu'on gagne par victoire :
+#   - B1 (dresseur débutant) : 20 crédits
+#   - B2 (intermédiaire) : 30 crédits
+#   - B3 (expert, tournoi) : 50 crédits
+# → Utilisé par credits_manager.py
+#
+# Pour le coût du tournoi on a fait le calcul :
+#   Zone 1 : ~3 B1 (60) + ~2 B2 (60) = 120 crédits
+#   Zone 2 : ~2 B1 (40) + ~3 B2 (90) = 130 crédits
+#   Total dresseurs : ~250 crédits
+#   + les défis si on les implémente (Could Have) : ~100-150 en bonus
+# 150 crédits ça représente environ 60% des gains dresseurs.
+# Le joueur peut acheter quelques objets et quand même accéder au tournoi
+# sans forcément battre tout le monde.
+# → Utilisé par tournament.py et credits_manager.py
+#
+# Le bracket fait 4 combats en élimination directe.
+# Les Pokémon ne sont pas soignés entre les combats, donc c'est déjà bien
+# costaud. On voulait que le tournoi soit un vrai défi de fin de jeu.
+# → Utilisé par tournament.py
+
+CREDITS_VICTOIRE_B1 ← 20
+CREDITS_VICTOIRE_B2 ← 30
+CREDITS_VICTOIRE_B3 ← 50
+COUT_ENTREE_TOURNOI ← 150
+BRACKET_TAILLE ← 4
+
+
+# =============================================================================
+# SAUVEGARDE
+# =============================================================================
+#
+# 3 slots, c'est ce qu'on a mis dans la doc.
+# Le joueur choisit son slot quand il sauvegarde ou charge.
+# Si il lance une nouvelle partie sur un slot existant, tout est remis à zéro
+# (c'est imposé par le sujet).
+# → Utilisé par save_manager.py (même si c'est un autre dev qui le code,
+#   il a besoin de cette constante)
+
+NOMBRE_SLOTS_SAUVEGARDE ← 3
+
+
+# =============================================================================
+# CHEMINS DES FICHIERS
+# =============================================================================
+#
+# Tous les chemins sont centralisés ici.
+# On construit tout à partir de la racine du projet avec pathlib,
+# comme ça c'est compatible Windows, Mac et Linux.
+#
+# Pourquoi c'est important :
+#   - Si on renomme un dossier, on change ici et c'est bon
+#   - Aucun chemin en dur dans le reste du code
+#   - Ça évite les erreurs "FileNotFoundError" quand on lance le jeu
+#     depuis un répertoire différent
+#
+# Ce fichier est dans config/, donc la racine du projet = 2 niveaux au-dessus.
+# → Utilisé par tous les modules qui lisent ou écrivent des fichiers
+
+RACINE_PROJET ← chemin_absolu(ce_fichier) / parent / parent
+
+CHEMIN_DATA ← RACINE_PROJET / "data"
+CHEMIN_SAVES ← RACINE_PROJET / "saves"
+CHEMIN_POKEDEX ← RACINE_PROJET / "pokedex"
+CHEMIN_ASSETS ← RACINE_PROJET / "assets"
+
+CHEMIN_SPRITES ← CHEMIN_ASSETS / "sprites"
+CHEMIN_SPRITES_JOUEUR ← CHEMIN_SPRITES / "player"
+CHEMIN_SPRITES_POKEMON ← CHEMIN_SPRITES / "pokemon"
+CHEMIN_SPRITES_NPC ← CHEMIN_SPRITES / "npcs"
+CHEMIN_SPRITES_ITEMS ← CHEMIN_SPRITES / "items"
+CHEMIN_SPRITES_UI ← CHEMIN_SPRITES / "ui"
+CHEMIN_MAPS ← CHEMIN_ASSETS / "maps"
+CHEMIN_TILESETS ← CHEMIN_MAPS / "tilesets"
+CHEMIN_MUSIQUES ← CHEMIN_ASSETS / "music"
+CHEMIN_SFX ← CHEMIN_ASSETS / "sfx"
+
+FICHIER_POKEMON ← CHEMIN_DATA / "pokemon.json"
+FICHIER_TRAINERS ← CHEMIN_DATA / "trainers.json"
+FICHIER_NPCS ← CHEMIN_DATA / "npcs.json"
+FICHIER_QUESTS ← CHEMIN_DATA / "quests.json"
+FICHIER_ITEMS ← CHEMIN_DATA / "items.json"
+FICHIER_SHOP ← CHEMIN_DATA / "shop_catalog.json"
+FICHIER_POKEDEX ← CHEMIN_POKEDEX / "pokedex.json"
+
+
+# =============================================================================
+# COULEURS UI
+# =============================================================================
+#
+# Pygame travaille avec des tuples RGB (rouge, vert, bleu) de 0 à 255.
+# On met toutes nos couleurs ici plutôt que d'écrire (255, 0, 0) partout.
+# C'est plus lisible et si le DA veut changer un truc, c'est un seul endroit.
+# → Utilisé par combat_ui.py, hud.py, dialogue_box.py, tous les écrans
+
+NOIR ← (0, 0, 0)
+BLANC ← (255, 255, 255)
+GRIS ← (128, 128, 128)
+GRIS_FONCE ← (64, 64, 64)
+
+# Barre de PV — la couleur change selon le % de vie restante
+COULEUR_PV_VERT ← (0, 200, 0)         # > 50% de vie
+COULEUR_PV_JAUNE ← (255, 200, 0)      # entre 20% et 50%
+COULEUR_PV_ROUGE ← (200, 0, 0)        # < 20%
+COULEUR_FOND_BARRE_PV ← (40, 40, 40)  # le fond gris derrière la barre
+
+# Barre d'XP
+COULEUR_XP ← (0, 100, 255)
+
+# Boîte de dialogue
+COULEUR_FOND_DIALOGUE ← (0, 0, 0)
+COULEUR_BORDURE_DIALOGUE ← (255, 255, 255)
+COULEUR_TEXTE ← (255, 255, 255)
+
+# Filtre nuit (une surface semi-transparente qu'on colle par-dessus la map)
+COULEUR_FILTRE_NUIT ← (0, 0, 30)      # bleu très sombre
+ALPHA_FILTRE_NUIT ← 120               # opacité, 0 = invisible, 255 = opaque
+
+# Menus
+COULEUR_SELECTION ← (255, 215, 0)      # doré pour le curseur de sélection
+COULEUR_FOND_MENU ← (20, 20, 40)       # fond sombre
+
+
+# =============================================================================
+# RENCONTRES SAUVAGES
+# =============================================================================
+#
+# Quand on marche sur une hautes herbe, chaque pas a une chance de
+# déclencher un combat sauvage.
+#
+# On a mis 15% parce que :
+#   - 5% c'est trop rare, le joueur galère à trouver des Pokémon
+#   - 30% c'est l'enfer, on peut pas traverser une zone sans se faire spam
+#   - 15% c'est le sweet spot des fan-games, ça tombe bien sans être chiant
+# → Utilisé par state_exploration.py
+#
+# Les niveaux des Pokémon sauvages dépendent de la zone.
+# On tire un niveau au hasard entre le min et le max.
+# Ça fait une progression naturelle : zone 1 t'as des petits niveaux,
+# zone 2 ça commence à piquer.
+# → Utilisé par state_exploration.py quand on génère le Pokémon sauvage
+
+TAUX_RENCONTRE ← 0.15
+
+NIVEAUX_POKEMON_PAR_ZONE ← {
+    "campus":    (min: 3,  max: 10),
+    "alentours": (min: 8,  max: 20),
+    "arene":     (min: 18, max: 25)
+}
