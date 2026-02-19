@@ -1,0 +1,106 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+#
+# NPC : la classe mère dont on hérite
+# On n'importe pas Team ou Player directement : on y accède via
+# game_manager.player.team dans les méthodes.
+
+importer NPC depuis entities.npc
+
+
+# =============================================================================
+# CLASSE NPC NURSE
+# =============================================================================
+#
+# L'infirmière du centre Pokémon.
+# Hérite de NPC. Redéfinit get_dialogue() et on_dialogue_end().
+# Tout le reste (position, sprite, interaction de base, draw) est hérité.
+
+CLASSE NPCNurse (hérite de NPC):
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+    #
+    # On appelle le constructeur de NPC avec les données du JSON.
+    # On ajoute un flag pour savoir si on vient de soigner
+    # (pour choisir le bon dialogue).
+    #
+    # a_soigne : passe à True après le soin, repasse à False
+    #   quand le joueur réinteragit. C'est pour alterner entre
+    #   le dialogue "default" et le dialogue "after".
+
+    MÉTHODE __init__(self, data):
+        # Appeler le constructeur de la classe mère
+        super().__init__(data)
+
+        # Flag spécifique à l'infirmière
+        self.a_soigne ← False
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_dialogue (redéfinition)
+    # -----------------------------------------------------------------
+    #
+    # Choisit le bon dialogue selon le contexte.
+    #
+    # Si on vient de soigner → dialogue "after"
+    #   ("Vos Pokémon sont en pleine forme !")
+    # Sinon → dialogue "default"
+    #   ("Bienvenue au Centre Pokémon !")
+    #
+    # Après avoir renvoyé le dialogue "after", on remet le flag
+    # à False pour que la prochaine interaction recommence normalement.
+
+    MÉTHODE get_dialogue(self):
+        SI self.a_soigne:
+            self.a_soigne ← False
+            RETOURNER self.dialogues.get("after", ["Vos Pokémon sont en pleine forme !"])
+
+        RETOURNER self.dialogues.get("default", ["Bienvenue au Centre Pokémon !"])
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : on_dialogue_end (redéfinition)
+    # -----------------------------------------------------------------
+    #
+    # Appelée quand le dialogue "default" est terminé.
+    # C'est ici que le soin se fait.
+    #
+    # Étapes :
+    #   1. Soigner toute l'équipe du joueur
+    #   2. Jouer le son de soin
+    #   3. Mettre le flag a_soigne à True
+    #   4. Lancer le dialogue "after" (un deuxième StateDialogue)
+    #
+    # game_manager : passé par le StateDialogue quand il appelle
+    #   la callback. On s'en sert pour accéder au joueur et à l'audio.
+    #
+    # Note : on vérifie si le flag a_soigne est False pour éviter
+    # de boucler. Si on vient du dialogue "after", on fait rien
+    # (le dialogue "after" n'a pas d'action spéciale derrière).
+
+    MÉTHODE on_dialogue_end(self, game_manager):
+        # Si on vient du dialogue "after", rien à faire
+        SI self.a_soigne:
+            RETOURNER
+
+        # Soigner toute l'équipe
+        game_manager.player.team.soigner_tous()
+
+        # Jouer le son de soin
+        game_manager.audio_manager.play_sfx("heal")
+
+        # Marquer qu'on a soigné
+        self.a_soigne ← True
+
+        # Lancer le dialogue "after"
+        lignes_after ← self.get_dialogue()
+
+        dialogue_state ← StateDialogue(
+            game_manager,
+            lignes_after,
+            callback_fin=self.on_dialogue_end
+        )
+        game_manager.state_manager.push(dialogue_state)
