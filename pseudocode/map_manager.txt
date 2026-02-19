@@ -1,0 +1,384 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+#
+# pytmx : pour charger les fichiers .tmx de Tiled
+# pygame : pour les surfaces et les rectangles
+# settings : pour les chemins, la taille des tiles, les taux de rencontre
+
+importer pytmx (load_pygame)
+importer pygame
+importer TILE_SIZE, CHEMIN_MAPS, TAUX_RENCONTRE depuis config.settings
+
+
+# =============================================================================
+# CLASSE MAP MANAGER
+# =============================================================================
+#
+# Charge les maps Tiled, les dessine, et fournit toutes les infos
+# nécessaires à l'exploration (collisions, herbes, transitions, spawns).
+
+CLASSE MapManager:
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+    #
+    # On initialise les structures vides.
+    # Rien n'est chargé tant qu'on appelle pas load_map().
+    #
+    # tmx_data : l'objet Pytmx qui contient toute la map parsée
+    # collision_rects : liste de pygame.Rect des zones infranchissables
+    # grass_rects : liste de pygame.Rect des zones de hautes herbes
+    # transitions : liste de dictionnaires {rect, zone_cible, spawn_x, spawn_y}
+    # spawns : dictionnaire des positions de spawn par type
+    # largeur / hauteur : taille de la map en pixels
+
+    MÉTHODE __init__(self):
+        self.tmx_data ← None
+        self.collision_rects ← liste vide
+        self.grass_rects ← liste vide
+        self.transitions ← liste vide
+        self.spawns ← dictionnaire vide
+        self.largeur ← 0
+        self.hauteur ← 0
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : load_map
+    # -----------------------------------------------------------------
+    #
+    # Charge une map depuis un fichier .tmx.
+    # Appelée quand le joueur entre dans une zone (début de partie,
+    # transition entre zones).
+    #
+    # Paramètre : nom_map → "campus", "alentours" ou "arena"
+    #
+    # Étapes :
+    #   1. Construire le chemin du fichier .tmx
+    #   2. Charger avec Pytmx
+    #   3. Calculer la taille de la map en pixels
+    #   4. Extraire les collisions
+    #   5. Extraire les hautes herbes
+    #   6. Extraire les transitions
+    #   7. Extraire les spawns
+    #   8. Informer la caméra de la nouvelle taille
+    #
+    # Si le fichier n'existe pas → on gère l'erreur sans crash.
+    #
+    # camera : référence vers l'objet Camera pour lui donner la taille
+
+    MÉTHODE load_map(self, nom_map, camera):
+        chemin ← CHEMIN_MAPS / (nom_map + ".tmx")
+
+        ESSAYER:
+            self.tmx_data ← pytmx.load_pygame(chemin)
+        EN CAS D'ERREUR:
+            afficher warning ("Impossible de charger la map : " + chemin)
+            RETOURNER
+
+        # Taille de la map en pixels
+        self.largeur ← tmx_data.width × TILE_SIZE
+        self.hauteur ← tmx_data.height × TILE_SIZE
+
+        # Informer la caméra
+        camera.set_map_size(tmx_data.width, tmx_data.height)
+
+        # Extraire les données des couches
+        self._parse_collisions()
+        self._parse_grass()
+        self._parse_transitions()
+        self._parse_spawns()
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _parse_collisions
+    # -----------------------------------------------------------------
+    #
+    # Parcourt la couche "Collision" et extrait tous les rectangles.
+    # Ces rectangles représentent les zones où le joueur ne peut pas aller :
+    # murs, arbres, bâtiments, bords de map, etc.
+    #
+    # Dans Tiled, la couche Collision peut être :
+    #   - Une couche d'objets (rectangles dessinés manuellement) → on prend le rect
+    #   - Une couche de tiles (tiles marquées comme collision) → on crée un rect par tile
+    #
+    # On stocke tout dans self.collision_rects comme des pygame.Rect.
+
+    MÉTHODE _parse_collisions(self):
+        self.collision_rects ← liste vide
+
+        # Chercher la couche qui s'appelle "Collision"
+        POUR CHAQUE couche DANS tmx_data:
+            SI couche.name == "Collision":
+
+                # Si c'est une couche d'objets
+                SI couche est de type ObjectGroup:
+                    POUR CHAQUE objet DANS couche:
+                        rect ← pygame.Rect(objet.x, objet.y, objet.width, objet.height)
+                        ajouter rect à self.collision_rects
+
+                # Si c'est une couche de tiles
+                SINON:
+                    POUR x DE 0 À tmx_data.width:
+                        POUR y DE 0 À tmx_data.height:
+                            SI il y a un tile à cette position dans cette couche:
+                                rect ← pygame.Rect(x × TILE_SIZE, y × TILE_SIZE,
+                                                    TILE_SIZE, TILE_SIZE)
+                                ajouter rect à self.collision_rects
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _parse_grass
+    # -----------------------------------------------------------------
+    #
+    # Même logique que _parse_collisions mais pour la couche "Grass".
+    # Ces rectangles représentent les zones de hautes herbes.
+    # Quand le joueur marche dessus, y'a une chance de combat sauvage.
+
+    MÉTHODE _parse_grass(self):
+        self.grass_rects ← liste vide
+
+        POUR CHAQUE couche DANS tmx_data:
+            SI couche.name == "Grass":
+                SI couche est de type ObjectGroup:
+                    POUR CHAQUE objet DANS couche:
+                        rect ← pygame.Rect(objet.x, objet.y, objet.width, objet.height)
+                        ajouter rect à self.grass_rects
+                SINON:
+                    POUR x DE 0 À tmx_data.width:
+                        POUR y DE 0 À tmx_data.height:
+                            SI il y a un tile à cette position:
+                                rect ← pygame.Rect(x × TILE_SIZE, y × TILE_SIZE,
+                                                    TILE_SIZE, TILE_SIZE)
+                                ajouter rect à self.grass_rects
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _parse_transitions
+    # -----------------------------------------------------------------
+    #
+    # Extrait les points de transition de la couche "Transitions".
+    # Ce sont des rectangles avec des propriétés custom dans Tiled :
+    #   - "target_zone" : le nom de la zone cible (ex: "alentours")
+    #   - "spawn_x" : la position x d'arrivée dans la zone cible
+    #   - "spawn_y" : la position y d'arrivée dans la zone cible
+    #
+    # Quand le joueur marche sur un de ces rectangles, le jeu
+    # charge la zone cible et place le joueur à la position spawn.
+    #
+    # C'est toujours une couche d'objets (pas de tiles).
+
+    MÉTHODE _parse_transitions(self):
+        self.transitions ← liste vide
+
+        POUR CHAQUE couche DANS tmx_data:
+            SI couche.name == "Transitions":
+                POUR CHAQUE objet DANS couche:
+                    transition ← {
+                        "rect": pygame.Rect(objet.x, objet.y, objet.width, objet.height),
+                        "target_zone": objet.properties["target_zone"],
+                        "spawn_x": objet.properties["spawn_x"],
+                        "spawn_y": objet.properties["spawn_y"]
+                    }
+                    ajouter transition à self.transitions
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _parse_spawns
+    # -----------------------------------------------------------------
+    #
+    # Extrait les positions de spawn de la couche "Spawns".
+    # Chaque objet a un "type" qui dit ce que c'est :
+    #   - "player" : où le joueur apparaît quand il arrive dans la zone
+    #   - "trainer" : où un dresseur est positionné
+    #   - "npc" : où un PNJ est positionné
+    #   - "item" : où un objet au sol est positionné
+    #
+    # Chaque objet peut aussi avoir un "name" ou un "id" dans ses
+    # propriétés pour identifier quel PNJ/dresseur/objet c'est.
+    #
+    # On stocke ça dans un dictionnaire classé par type :
+    #   {"player": [{x, y}], "trainer": [{x, y, id}, ...], ...}
+
+    MÉTHODE _parse_spawns(self):
+        self.spawns ← dictionnaire vide
+
+        POUR CHAQUE couche DANS tmx_data:
+            SI couche.name == "Spawns":
+                POUR CHAQUE objet DANS couche:
+                    type_spawn ← objet.type OU objet.properties["type"]
+
+                    spawn_data ← {
+                        "x": objet.x,
+                        "y": objet.y,
+                        "properties": objet.properties (si elles existent)
+                    }
+
+                    SI type_spawn N'EST PAS dans self.spawns:
+                        self.spawns[type_spawn] ← liste vide
+
+                    ajouter spawn_data à self.spawns[type_spawn]
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : draw
+    # -----------------------------------------------------------------
+    #
+    # Dessine les couches visibles de la map sur l'écran.
+    # Appelée à chaque frame par state_exploration.py.
+    #
+    # On dessine couche par couche, dans l'ordre :
+    #   1. Ground (le sol)
+    #   2. Decoration (les objets de décor)
+    # Les couches Collision, Grass, Transitions, Spawns ne sont PAS
+    # dessinées (elles sont invisibles, juste de la logique).
+    #
+    # Optimisation : on utilise camera.get_visible_area() pour ne
+    # dessiner que les tiles qui sont dans le champ de la caméra.
+    # Sur une map de 100×100 tiles, ça évite de dessiner 10 000 tiles
+    # quand on en voit que ~768.
+    #
+    # camera : pour savoir quelles tiles dessiner et à quelle position écran
+
+    MÉTHODE draw(self, screen, camera):
+        SI tmx_data EST None:
+            RETOURNER
+
+        # Récupérer la zone visible
+        tile_x_debut, tile_y_debut, tile_x_fin, tile_y_fin ← camera.get_visible_area()
+
+        # Couches à dessiner (dans l'ordre)
+        couches_visibles ← ["Ground", "Decoration"]
+
+        POUR CHAQUE nom_couche DANS couches_visibles:
+            # Trouver la couche dans tmx_data
+            POUR CHAQUE couche DANS tmx_data:
+                SI couche.name == nom_couche ET couche est de type TileLayer:
+
+                    # Dessiner que les tiles visibles
+                    POUR x DE tile_x_debut À tile_x_fin:
+                        POUR y DE tile_y_debut À tile_y_fin:
+                            image ← tmx_data.get_tile_image(x, y, index_couche)
+
+                            SI image N'EST PAS None:
+                                # Convertir position map → position écran
+                                pos_ecran ← camera.apply(x × TILE_SIZE, y × TILE_SIZE)
+                                screen.blit(image, pos_ecran)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : is_collision
+    # -----------------------------------------------------------------
+    #
+    # Vérifie si un rectangle donné entre en collision avec un obstacle.
+    # Appelée par state_exploration.py avant de déplacer le joueur.
+    #
+    # rect : le pygame.Rect de la future position du joueur.
+    # On teste si ce rect chevauche un des rectangles de collision.
+    #
+    # Renvoie True si y'a collision (le joueur peut PAS y aller),
+    # False sinon (la voie est libre).
+    #
+    # On utilise la méthode colliderect() de Pygame qui vérifie
+    # si deux rectangles se chevauchent. C'est la base de la détection
+    # de collisions en 2D.
+
+    MÉTHODE is_collision(self, rect):
+        POUR CHAQUE collision_rect DANS self.collision_rects:
+            SI rect.colliderect(collision_rect):
+                RETOURNER True
+        RETOURNER False
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : is_grass
+    # -----------------------------------------------------------------
+    #
+    # Vérifie si le joueur est sur une zone de hautes herbes.
+    # Appelée par state_exploration.py à chaque déplacement.
+    #
+    # rect : le pygame.Rect de la position actuelle du joueur.
+    # Renvoie True si le joueur est dans les hautes herbes.
+    #
+    # Note : cette méthode dit juste si le joueur EST dans l'herbe.
+    # C'est state_exploration.py qui tire au sort le déclenchement
+    # du combat avec TAUX_RENCONTRE.
+
+    MÉTHODE is_grass(self, rect):
+        POUR CHAQUE grass_rect DANS self.grass_rects:
+            SI rect.colliderect(grass_rect):
+                RETOURNER True
+        RETOURNER False
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : check_transition
+    # -----------------------------------------------------------------
+    #
+    # Vérifie si le joueur est sur un point de transition.
+    # Appelée par state_exploration.py à chaque déplacement.
+    #
+    # rect : le pygame.Rect de la position actuelle du joueur.
+    #
+    # Si le joueur est sur une transition :
+    #   → renvoie le dictionnaire {target_zone, spawn_x, spawn_y}
+    # Sinon :
+    #   → renvoie None
+    #
+    # C'est state_exploration.py qui utilisera ces infos pour
+    # appeler load_map() avec la nouvelle zone et repositionner le joueur.
+
+    MÉTHODE check_transition(self, rect):
+        POUR CHAQUE transition DANS self.transitions:
+            SI rect.colliderect(transition["rect"]):
+                RETOURNER transition
+        RETOURNER None
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_spawn_position
+    # -----------------------------------------------------------------
+    #
+    # Renvoie la position de spawn du joueur dans la map actuelle.
+    # Utilisée quand on charge une nouvelle zone pour savoir où
+    # placer le joueur.
+    #
+    # Si y'a un spawn de type "player", on prend sa position.
+    # Sinon on renvoie (0, 0) par défaut (ça devrait pas arriver
+    # si les maps sont bien faites, mais on gère le cas).
+
+    MÉTHODE get_spawn_position(self):
+        SI "player" EST dans self.spawns ET la liste N'EST PAS vide:
+            spawn ← self.spawns["player"][0]
+            RETOURNER (spawn["x"], spawn["y"])
+        RETOURNER (0, 0)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_spawns_by_type
+    # -----------------------------------------------------------------
+    #
+    # Renvoie tous les spawns d'un type donné.
+    # Utilisée par state_exploration.py pour placer les PNJ,
+    # dresseurs et objets au sol quand on charge une zone.
+    #
+    # type_spawn : "trainer", "npc", "item", etc.
+    # Renvoie la liste des positions et propriétés.
+
+    MÉTHODE get_spawns_by_type(self, type_spawn):
+        SI type_spawn EST dans self.spawns:
+            RETOURNER self.spawns[type_spawn]
+        RETOURNER liste vide
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_map_size
+    # -----------------------------------------------------------------
+    #
+    # Renvoie la taille de la map en pixels.
+    # Utile pour d'autres modules qui ont besoin de connaître
+    # les limites du monde (ex: limiter le spawn des Pokémon sauvages).
+
+    MÉTHODE get_map_size(self):
+        RETOURNER (self.largeur, self.hauteur)
