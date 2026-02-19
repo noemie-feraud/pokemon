@@ -218,4 +218,124 @@ CLASSE NPC:
     #
     # Par défaut : rien. Le dialogue se ferme et c'est tout.
     #
-    # C'est LA méthode que les classes filles redéfini
+    # C'est LA méthode que les classes filles redéfinissent :
+    #   - NPCNurse → soigne l'équipe
+    #   - NPCShopkeeper → ouvre la boutique (push StateShop)
+    #   - NPCProfessor → donne le starter (push StarterSelect)
+    #   - NPCQuest → vérifie le défi ou en donne un nouveau
+    #   - Trainer → lance le combat (push StateCombat)
+    #   - NPCAmbient → rien (juste le dialogue)
+    #
+    # game_manager : passé par le StateDialogue quand il appelle
+    #   la callback.
+
+    MÉTHODE on_dialogue_end(self, game_manager):
+        passer  # rien par défaut, les classes filles redéfinissent
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : draw
+    # -----------------------------------------------------------------
+    #
+    # Dessine le PNJ à l'écran en utilisant la caméra.
+    # Appelée par state_exploration.py dans sa boucle de rendu.
+    #
+    # screen : la surface Pygame sur laquelle dessiner
+    # camera : pour convertir la position map → position écran
+
+    MÉTHODE draw(self, screen, camera):
+        SI self.sprite EST None:
+            RETOURNER
+
+        pos_ecran ← camera.apply(self.x, self.y)
+        screen.blit(self.sprite, pos_ecran)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_collision_rect
+    # -----------------------------------------------------------------
+    #
+    # Renvoie le rectangle de collision du PNJ.
+    # Utilisé par state_exploration.py pour bloquer le joueur
+    # (les PNJ sont des obstacles solides, on peut pas marcher dessus).
+    #
+    # On pourrait aussi ajouter les PNJ dans la liste des collisions
+    # du map_manager, mais c'est plus propre de les gérer séparément
+    # parce qu'ils sont dynamiques (ils peuvent bouger ou disparaître).
+
+    MÉTHODE get_collision_rect(self):
+        RETOURNER self.rect
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : is_near_player
+    # -----------------------------------------------------------------
+    #
+    # Vérifie si le joueur est assez proche pour interagir.
+    # La distance max c'est 1 tile (32 pixels) dans la direction
+    # où le joueur regarde.
+    #
+    # player : l'objet Player
+    #
+    # On vérifie deux choses :
+    #   1. Le joueur est à 1 tile de distance du PNJ
+    #   2. Le joueur regarde VERS le PNJ (pas dans une autre direction)
+    #
+    # Renvoie True si l'interaction est possible, False sinon.
+    #
+    # C'est state_exploration.py qui appelle ça quand le joueur
+    # appuie sur la touche d'interaction.
+
+    MÉTHODE is_near_player(self, player):
+        # Calculer la position que le joueur regarde (1 tile devant lui)
+        cible_x ← player.x
+        cible_y ← player.y
+
+        SI player.direction == "up":
+            cible_y ← player.y - TILE_SIZE
+        SINON SI player.direction == "down":
+            cible_y ← player.y + TILE_SIZE
+        SINON SI player.direction == "left":
+            cible_x ← player.x - TILE_SIZE
+        SINON SI player.direction == "right":
+            cible_x ← player.x + TILE_SIZE
+
+        # Vérifier si le PNJ est à cette position
+        rect_cible ← pygame.Rect(cible_x, cible_y, TILE_SIZE, TILE_SIZE)
+        RETOURNER self.rect.colliderect(rect_cible)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : to_dict
+    # -----------------------------------------------------------------
+    #
+    # Sérialisation pour la sauvegarde.
+    # Les PNJ eux-mêmes sont pas sauvegardés (ils viennent du JSON
+    # de données), mais certaines infos d'état oui (ex: dresseur
+    # déjà battu). Ces infos sont dans le Player, pas dans le NPC.
+    #
+    # Cette méthode est surtout utile pour le debug et les classes filles.
+
+    MÉTHODE to_dict(self):
+        RETOURNER {
+            "id": self.id,
+            "name": self.name,
+            "type": self.npc_type,
+            "zone": self.zone,
+            "x": self.x,
+            "y": self.y,
+            "direction": self.direction
+        }
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE SPÉCIALE : __str__
+    # -----------------------------------------------------------------
+    #
+    # Affichage debug.
+    # Exemple : "PNJ 'Infirmière Joy' (nurse) @ campus (320, 256)"
+
+    MÉTHODE __str__(self):
+        RETOURNER "PNJ '{}' ({}) @ {} ({}, {})".format(
+            self.name, self.npc_type, self.zone, self.x, self.y
+        )
