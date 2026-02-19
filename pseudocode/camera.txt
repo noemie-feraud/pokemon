@@ -1,0 +1,193 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+#
+# On a besoin des constantes d'affichage pour :
+#   - Savoir la taille de l'écran (pour centrer le joueur)
+#   - Savoir la taille des tiles (pour convertir tiles → pixels)
+
+importer SCREEN_WIDTH, SCREEN_HEIGHT, TILE_SIZE depuis config.settings
+
+
+# =============================================================================
+# CLASSE CAMERA
+# =============================================================================
+#
+# La caméra suit le joueur et calcule le décalage à appliquer
+# à tout ce qu'on dessine pour que le joueur reste centré.
+
+CLASSE Camera:
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+    #
+    # offset_x et offset_y : le décalage en pixels.
+    #   C'est la distance entre le coin haut-gauche de la map
+    #   et le coin haut-gauche de l'écran.
+    #   Au début c'est (0, 0), ce qui veut dire qu'on voit le coin
+    #   haut-gauche de la map.
+    #
+    # largeur_map et hauteur_map : la taille totale de la map en pixels.
+    #   Initialisé à la taille de l'écran par défaut.
+    #   Mis à jour quand on charge une nouvelle map via set_map_size().
+    #   Sert pour le clamp (bloquer la caméra aux bords).
+
+    MÉTHODE __init__(self):
+        self.offset_x ← 0
+        self.offset_y ← 0
+        self.largeur_map ← SCREEN_WIDTH
+        self.hauteur_map ← SCREEN_HEIGHT
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : set_map_size
+    # -----------------------------------------------------------------
+    #
+    # Appelée par map_manager.py quand on charge une nouvelle map.
+    # Reçoit la taille de la map en nombre de tiles.
+    # On convertit en pixels en multipliant par TILE_SIZE.
+    #
+    # Exemple : une map de 50×40 tiles avec des tiles de 32px
+    #   → largeur_map = 50 × 32 = 1600 pixels
+    #   → hauteur_map = 40 × 32 = 1280 pixels
+    #
+    # C'est ces valeurs qui servent pour le clamp dans update().
+
+    MÉTHODE set_map_size(self, largeur_en_tiles, hauteur_en_tiles):
+        self.largeur_map ← largeur_en_tiles × TILE_SIZE
+        self.hauteur_map ← hauteur_en_tiles × TILE_SIZE
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : update
+    # -----------------------------------------------------------------
+    #
+    # Appelée à chaque frame par state_exploration.py.
+    # Reçoit la position du joueur en pixels (le centre de son sprite).
+    #
+    # Étape 1 : calculer l'offset pour centrer le joueur
+    #   On veut que le joueur soit au milieu de l'écran.
+    #   offset = position_joueur - moitié_écran
+    #
+    # Étape 2 : clamper l'offset pour pas dépasser les bords
+    #   offset_x entre 0 et (largeur_map - largeur_écran)
+    #   offset_y entre 0 et (hauteur_map - hauteur_écran)
+    #
+    #   Si la map est plus petite que l'écran sur un axe,
+    #   on centre la map sur cet axe (offset négatif = marge).
+    #
+    # target_x/target_y : c'est la position du joueur.
+    # On prend le centre du sprite pour que le centrage soit propre.
+
+    MÉTHODE update(self, target_x, target_y):
+
+        # Centrer la caméra sur la cible
+        self.offset_x ← target_x - SCREEN_WIDTH / 2
+        self.offset_y ← target_y - SCREEN_HEIGHT / 2
+
+        # Clamper aux bords de la map
+        # Cas normal : la map est plus grande que l'écran
+        SI self.largeur_map > SCREEN_WIDTH:
+            SI self.offset_x < 0:
+                self.offset_x ← 0
+            SI self.offset_x > self.largeur_map - SCREEN_WIDTH:
+                self.offset_x ← self.largeur_map - SCREEN_WIDTH
+        SINON:
+            # La map est plus petite que l'écran → on la centre
+            self.offset_x ← -(SCREEN_WIDTH - self.largeur_map) / 2
+
+        SI self.hauteur_map > SCREEN_HEIGHT:
+            SI self.offset_y < 0:
+                self.offset_y ← 0
+            SI self.offset_y > self.hauteur_map - SCREEN_HEIGHT:
+                self.offset_y ← self.hauteur_map - SCREEN_HEIGHT
+        SINON:
+            self.offset_y ← -(SCREEN_HEIGHT - self.hauteur_map) / 2
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : apply
+    # -----------------------------------------------------------------
+    #
+    # Méthode utilitaire pour convertir une position "monde" (sur la map)
+    # en position "écran" (où dessiner à l'écran).
+    #
+    # C'est le truc qu'on appelle le plus souvent. Chaque sprite,
+    # chaque tile, chaque PNJ passe par cette méthode pour savoir
+    # où se dessiner.
+    #
+    # Exemple :
+    #   Un arbre est à (600, 300) sur la map.
+    #   La caméra a un offset de (100, 50).
+    #   apply(600, 300) renvoie (500, 250).
+    #   → On dessine l'arbre à (500, 250) sur l'écran.
+
+    MÉTHODE apply(self, x, y):
+        RETOURNER (x - self.offset_x, y - self.offset_y)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : apply_rect
+    # -----------------------------------------------------------------
+    #
+    # Même chose que apply() mais pour un rectangle Pygame (pygame.Rect).
+    # Pratique parce que les sprites ont souvent un .rect pour leur position.
+    #
+    # On crée un nouveau rect décalé au lieu de modifier l'original,
+    # comme ça la position réelle du sprite sur la map est pas altérée.
+    #
+    # Exemple :
+    #   sprite_joueur.rect = Rect(500, 400, 32, 32)  ← position sur la map
+    #   camera.apply_rect(sprite_joueur.rect) → Rect(400, 350, 32, 32) ← position écran
+
+    MÉTHODE apply_rect(self, rect):
+        RETOURNER nouveau Rect(
+            rect.x - self.offset_x,
+            rect.y - self.offset_y,
+            rect.largeur,
+            rect.hauteur
+        )
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_visible_area
+    # -----------------------------------------------------------------
+    #
+    # Renvoie le rectangle de la zone visible en coordonnées de la map.
+    # C'est pour l'optimisation du rendu : au lieu de dessiner TOUTES
+    # les tiles de la map (y compris celles hors écran), on dessine
+    # que celles qui sont dans la zone visible.
+    #
+    # Sur une grande map ça fait une grosse différence de performance.
+    # Si la map fait 100×100 tiles = 10 000 tiles, mais qu'on en voit
+    # que 32×24 = 768, ça sert à rien de dessiner les 9232 autres.
+    #
+    # Renvoie les indices (en tiles) de la zone visible :
+    #   tile_x_debut, tile_y_debut, tile_x_fin, tile_y_fin
+    #
+    # map_manager.py utilise ça dans sa boucle de rendu :
+    #   POUR x DE tile_x_debut À tile_x_fin:
+    #       POUR y DE tile_y_debut À tile_y_fin:
+    #           dessiner tile(x, y)
+
+    MÉTHODE get_visible_area(self):
+        tile_x_debut ← int(self.offset_x / TILE_SIZE)
+        tile_y_debut ← int(self.offset_y / TILE_SIZE)
+        tile_x_fin ← tile_x_debut + TILES_EN_LARGEUR + 1
+        tile_y_fin ← tile_y_debut + TILES_EN_HAUTEUR + 1
+
+        # On ajoute +1 pour couvrir les tiles partiellement visibles au bord.
+        # Sans ça on aurait une ligne de pixels vides sur le bord droit/bas.
+
+        # Clamper pour pas dépasser les limites de la map
+        SI tile_x_debut < 0:
+            tile_x_debut ← 0
+        SI tile_y_debut < 0:
+            tile_y_debut ← 0
+        SI tile_x_fin > self.largeur_map / TILE_SIZE:
+            tile_x_fin ← self.largeur_map / TILE_SIZE
+        SI tile_y_fin > self.hauteur_map / TILE_SIZE:
+            tile_y_fin ← self.hauteur_map / TILE_SIZE
+
+        RETOURNER (tile_x_debut, tile_y_debut, tile_x_fin, tile_y_fin)
