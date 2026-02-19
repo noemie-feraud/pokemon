@@ -1,0 +1,205 @@
+# =============================================================================
+# CLASSE STORAGE
+# =============================================================================
+#
+# Stockage des Pokémon capturés au-delà de l'équipe active.
+# Pas de limite de taille.
+# Accessible uniquement au centre Pokémon pour les échanges.
+
+CLASSE Storage:
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+    #
+    # pokemon_list : liste d'objets Pokemon pour initialiser le stockage.
+    #   Vide en début de partie, rempli quand on charge une sauvegarde.
+
+    MÉTHODE __init__(self, pokemon_list=None):
+        SI pokemon_list EST None:
+            self.pokemons ← liste vide
+        SINON:
+            self.pokemons ← copie de pokemon_list
+
+
+    # -----------------------------------------------------------------
+    # PROPRIÉTÉ : taille
+    # -----------------------------------------------------------------
+    #
+    # Le nombre de Pokémon dans le stockage.
+    # Utilisé pour l'affichage ("Stockage : 12 Pokémon").
+
+    PROPRIÉTÉ taille:
+        RETOURNER len(self.pokemons)
+
+
+    # -----------------------------------------------------------------
+    # PROPRIÉTÉ : est_vide
+    # -----------------------------------------------------------------
+    #
+    # Renvoie True si le stockage est vide.
+    # Utilisé par pokemon_center.py pour savoir s'il y a quelque
+    # chose à afficher dans l'interface d'échange.
+
+    PROPRIÉTÉ est_vide:
+        RETOURNER self.taille == 0
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : ajouter
+    # -----------------------------------------------------------------
+    #
+    # Ajoute un Pokémon dans le stockage.
+    # Pas de vérification de doublon : le joueur peut avoir
+    # plusieurs Pokémon de la même espèce.
+    # Pas de limite de taille.
+    #
+    # Appelé par :
+    #   - capture_system.py quand l'équipe est pleine
+    #   - pokemon_center.py quand le joueur transfère un Pokémon
+    #     de son équipe vers le stockage
+
+    MÉTHODE ajouter(self, pokemon):
+        ajouter pokemon à self.pokemons
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : retirer
+    # -----------------------------------------------------------------
+    #
+    # Retire un Pokémon du stockage par son index.
+    #
+    # Renvoie le Pokémon retiré, ou None si l'index est invalide.
+    # Pas de contrainte de "toujours au moins 1" comme dans Team.
+    # Le stockage peut être complètement vidé.
+    #
+    # Appelé par pokemon_center.py quand le joueur transfère
+    # un Pokémon du stockage vers son équipe.
+
+    MÉTHODE retirer(self, index):
+        SI index < 0 OU index >= self.taille:
+            RETOURNER None
+
+        RETOURNER retirer self.pokemons[index]
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_pokemon
+    # -----------------------------------------------------------------
+    #
+    # Renvoie le Pokémon à un index donné sans le retirer.
+    # Utilisé par l'interface d'échange au centre Pokémon pour
+    # afficher les infos du Pokémon avant que le joueur décide.
+
+    MÉTHODE get_pokemon(self, index):
+        SI index < 0 OU index >= self.taille:
+            RETOURNER None
+        RETOURNER self.pokemons[index]
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_all
+    # -----------------------------------------------------------------
+    #
+    # Renvoie la liste complète des Pokémon stockés.
+    # Copie pour éviter les modifications extérieures.
+    #
+    # Utilisé par l'interface d'échange pour afficher tout le contenu
+    # et par save_manager.py pour la sauvegarde.
+
+    MÉTHODE get_all(self):
+        RETOURNER copie de self.pokemons
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_par_type
+    # -----------------------------------------------------------------
+    #
+    # Renvoie tous les Pokémon d'un type donné.
+    # Utile pour les défis de capture ("capturer 3 Pokémon de type Feu")
+    # et pour que le joueur retrouve facilement ses Pokémon au centre.
+    #
+    # type_recherche : "feu", "eau", "plante", etc.
+
+    MÉTHODE get_par_type(self, type_recherche):
+        resultats ← liste vide
+        POUR CHAQUE pokemon DANS self.pokemons:
+            SI type_recherche EST dans pokemon.types:
+                ajouter pokemon à resultats
+        RETOURNER resultats
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : contient
+    # -----------------------------------------------------------------
+    #
+    # Vérifie si un Pokémon (par son id) est dans le stockage.
+    # Utile pour le pokédex ou des vérifications.
+
+    MÉTHODE contient(self, pokemon_id):
+        POUR CHAQUE pokemon DANS self.pokemons:
+            SI pokemon.id == pokemon_id:
+                RETOURNER True
+        RETOURNER False
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : compter_espece
+    # -----------------------------------------------------------------
+    #
+    # Compte combien de Pokémon d'une espèce donnée sont dans le stockage.
+    # Utile pour les défis : "capturer 3 Pokémon de type Eau"
+    # → on compte ceux dans l'équipe + ceux dans le stockage.
+
+    MÉTHODE compter_espece(self, pokemon_id):
+        compteur ← 0
+        POUR CHAQUE pokemon DANS self.pokemons:
+            SI pokemon.id == pokemon_id:
+                compteur ← compteur + 1
+        RETOURNER compteur
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : to_list
+    # -----------------------------------------------------------------
+    #
+    # Convertit le stockage en liste de dictionnaires pour la sauvegarde.
+    # Même principe que Team.to_list(), on appelle to_dict() sur
+    # chaque Pokémon.
+
+    MÉTHODE to_list(self):
+        RETOURNER [pokemon.to_dict() POUR CHAQUE pokemon DANS self.pokemons]
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE SPÉCIALE : __len__
+    # -----------------------------------------------------------------
+    #
+    # Permet d'écrire len(storage).
+
+    MÉTHODE __len__(self):
+        RETOURNER self.taille
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE SPÉCIALE : __iter__
+    # -----------------------------------------------------------------
+    #
+    # Permet de faire "POUR pokemon DANS storage:".
+
+    MÉTHODE __iter__(self):
+        RETOURNER itérateur sur self.pokemons
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE SPÉCIALE : __str__
+    # -----------------------------------------------------------------
+    #
+    # Affichage debug.
+    # Exemple : "Stockage (12 Pokémon) : Flamigator, AquaBug, ..."
+
+    MÉTHODE __str__(self):
+        SI self.est_vide:
+            RETOURNER "Stockage (vide)"
+        noms ← [p.nom POUR CHAQUE p DANS self.pokemons]
+        RETOURNER "Stockage ({} Pokémon) : {}".format(self.taille, ", ".join(noms))
