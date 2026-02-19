@@ -1,0 +1,221 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+#
+# pygame : pour les sprites et les rectangles
+# settings : pour TILE_SIZE et le chemin des sprites PNJ
+
+importer pygame
+importer TILE_SIZE, CHEMIN_SPRITES_NPC depuis config.settings
+
+
+# =============================================================================
+# CLASSE NPC
+# =============================================================================
+#
+# Classe de base pour tous les personnages non-joueurs.
+# Gère : position, sprite, direction, dialogue, interaction.
+# Les classes filles redéfinissent on_dialogue_end() pour leur
+# comportement spécifique.
+
+CLASSE NPC:
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+    #
+    # data : dictionnaire venant du JSON (npcs.json ou trainers.json).
+    #   Contient tout ce qu'il faut pour créer le PNJ : position,
+    #   sprite, dialogues, type, etc.
+    #
+    # On charge le sprite et on initialise le rectangle de collision.
+    # Le PNJ a aussi un rect d'interaction (un peu plus grand que le
+    # rect de collision) pour détecter quand le joueur est assez proche
+    # pour interagir.
+
+    MÉTHODE __init__(self, data):
+
+        # --- IDENTITÉ ---
+        self.id ← data["id"]
+        self.name ← data.get("name", "PNJ")
+        self.npc_type ← data.get("type", "ambient")    # "nurse", "shopkeeper", "professor", "quest", "ambient"
+
+        # --- POSITION ---
+        self.x ← data["x"]
+        self.y ← data["y"]
+        self.direction ← data.get("direction", "down")
+        self.zone ← data.get("zone", "campus")
+
+        # --- RECTANGLE DE COLLISION ---
+        # Le PNJ occupe un tile sur la map.
+        # Le joueur ne peut pas marcher sur un PNJ (CA-13).
+        self.rect ← pygame.Rect(self.x, self.y, TILE_SIZE, TILE_SIZE)
+
+        # --- DIALOGUES ---
+        # Dictionnaire de listes de lignes.
+        # "default" : dialogue de base quand on interagit
+        # Les classes filles peuvent avoir d'autres clés ("after", "quest_active", etc.)
+        self.dialogues ← data.get("dialogues", {"default": ["..."]})
+
+        # --- SPRITE ---
+        # On charge le sprite depuis les assets.
+        # Si le fichier est absent, placeholder.
+        self.sprite ← None
+        self._charger_sprite(data)
+
+        # --- FLAG D'INTERACTION ---
+        # Certains PNJ ne sont interactifs qu'une fois (ex: objet au sol).
+        # Par défaut tout le monde est réinteractif.
+        self.interactif ← True
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _charger_sprite
+    # -----------------------------------------------------------------
+    #
+    # Charge le sprite du PNJ.
+    # Le chemin peut être dans les données du JSON, ou on le déduit
+    # du type et de l'id.
+    #
+    # Si le fichier existe pas → placeholder magenta.
+
+    MÉTHODE _charger_sprite(self, data):
+        chemin_sprite ← data.get("sprite", None)
+
+        SI chemin_sprite ET le fichier existe:
+            ESSAYER:
+                self.sprite ← pygame.image.load(chemin_sprite).convert_alpha()
+            EN CAS D'ERREUR:
+                self.sprite ← self._creer_placeholder()
+        SINON:
+            self.sprite ← self._creer_placeholder()
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _creer_placeholder
+    # -----------------------------------------------------------------
+    #
+    # Sprite de remplacement. Rectangle coloré selon le type de PNJ.
+    # Comme ça même sans sprites, on peut distinguer visuellement
+    # les PNJ sur la map pendant le dev.
+    #
+    # Couleurs :
+    #   - Infirmière → rose
+    #   - Vendeur → vert
+    #   - Dresseur → rouge
+    #   - Professeur → bleu
+    #   - Défi → jaune
+    #   - Ambiance → gris
+
+    MÉTHODE _creer_placeholder(self):
+        couleurs ← {
+            "nurse": (255, 150, 150),
+            "shopkeeper": (150, 255, 150),
+            "trainer": (255, 100, 100),
+            "professor": (100, 100, 255),
+            "quest": (255, 255, 100),
+            "ambient": (180, 180, 180)
+        }
+        couleur ← couleurs.get(self.npc_type, (180, 180, 180))
+        surface ← pygame.Surface((TILE_SIZE, TILE_SIZE))
+        surface.fill(couleur)
+        RETOURNER surface
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_dialogue
+    # -----------------------------------------------------------------
+    #
+    # Renvoie les lignes de dialogue à afficher.
+    # Par défaut, renvoie le dialogue "default".
+    #
+    # Les classes filles redéfinissent cette méthode pour choisir
+    # le bon dialogue selon le contexte.
+    # Exemple : l'infirmière renvoie "after" si elle vient de soigner.
+    #
+    # Renvoie une liste de strings (chaque string = une ligne de dialogue).
+
+    MÉTHODE get_dialogue(self):
+        RETOURNER self.dialogues.get("default", ["..."])
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : face_player
+    # -----------------------------------------------------------------
+    #
+    # Tourne le PNJ vers le joueur quand celui-ci lui parle.
+    # C'est un petit détail mais ça rend le jeu plus vivant.
+    # Dans les vrais Pokémon, les PNJ se tournent toujours vers
+    # vous quand vous leur parlez.
+    #
+    # player_direction : la direction dans laquelle le joueur regarde.
+    # Le PNJ se met dans la direction opposée (si le joueur regarde
+    # vers le haut, le PNJ regarde vers le bas pour lui faire face).
+
+    MÉTHODE face_player(self, player_direction):
+        opposee ← {
+            "up": "down",
+            "down": "up",
+            "left": "right",
+            "right": "left"
+        }
+        self.direction ← opposee.get(player_direction, "down")
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : on_interact
+    # -----------------------------------------------------------------
+    #
+    # Appelée quand le joueur interagit avec ce PNJ.
+    # C'est le point d'entrée de l'interaction.
+    #
+    # Comportement par défaut :
+    #   1. Se tourner vers le joueur
+    #   2. Lancer le dialogue
+    #
+    # game_manager : référence vers l'objet Game, pour pouvoir
+    #   push un StateDialogue sur la pile d'états.
+    #
+    # Les classes filles peuvent redéfinir cette méthode si elles
+    # veulent un comportement d'interaction différent.
+    # Mais en général elles redéfinissent plutôt on_dialogue_end().
+
+    MÉTHODE on_interact(self, game_manager):
+        SI NOT self.interactif:
+            RETOURNER
+
+        # Se tourner vers le joueur
+        self.face_player(game_manager.player.direction)
+
+        # Récupérer les lignes de dialogue
+        lignes ← self.get_dialogue()
+
+        # Lancer le dialogue
+        # On push un StateDialogue sur la pile d'états.
+        # On lui passe les lignes à afficher et une référence vers
+        # self.on_dialogue_end pour qu'il l'appelle quand le dialogue
+        # est terminé.
+        #
+        # Le StateDialogue s'occupe de l'affichage (boîte de texte,
+        # bip sonore, avancement avec Espace). Quand toutes les lignes
+        # sont passées, il appelle la callback on_dialogue_end puis
+        # se pop de la pile d'états.
+
+        dialogue_state ← StateDialogue(
+            game_manager,
+            lignes,
+            callback_fin=self.on_dialogue_end
+        )
+        game_manager.state_manager.push(dialogue_state)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : on_dialogue_end
+    # -----------------------------------------------------------------
+    #
+    # Appelée quand le dialogue est terminé (le joueur a passé
+    # toutes les lignes).
+    #
+    # Par défaut : rien. Le dialogue se ferme et c'est tout.
+    #
+    # C'est LA méthode que les classes filles redéfini
