@@ -1,0 +1,479 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+#
+# pygame : pour le sprite, le rect, le chargement d'images
+# settings : pour TILE_SIZE (taille du rect de collision),
+#            CHEMIN_SPRITES_JOUEUR (dossier des sprites)
+# Team : l'équipe active
+# Storage : le stockage
+#
+# Note : Inventory et CreditsManager sont pas encore documentés.
+# Le Player les possèdera, mais on les intégrera quand on les aura
+# documentés. Pour l'instant on met des placeholders.
+
+importer pygame
+importer TILE_SIZE, CHEMIN_SPRITES_JOUEUR depuis config.settings
+importer Team depuis entities.team
+importer Storage depuis entities.storage
+
+
+# =============================================================================
+# CLASSE PLAYER
+# =============================================================================
+#
+# Représente le joueur. Possède tout ce qui lui appartient :
+# équipe, stockage, inventaire, crédits, position, sprites.
+
+CLASSE Player:
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+    #
+    # character_id : 1 ou 2, le dresseur choisi par le joueur.
+    #   Détermine quel jeu de sprites charger et le nom du dresseur.
+    #
+    # name : le nom du dresseur (défini par l'équipe créative).
+    #
+    # start_x, start_y : la position de départ en pixels sur la map.
+    #   Fournie par map_manager.get_spawn_position() quand on charge
+    #   une zone.
+    #
+    # On initialise tout ici : position, vitesse, direction, sprites,
+    # animation, équipe, stockage, et les futurs managers (inventory,
+    # credits). Tout part de zéro, les données sont remplies ensuite
+    # (choix du starter, chargement de sauvegarde, etc.).
+
+    MÉTHODE __init__(self, character_id, name, start_x=0, start_y=0):
+
+        # --- IDENTITÉ ---
+        self.character_id ← character_id     # 1 ou 2
+        self.name ← name                     # nom du dresseur
+
+        # --- POSITION & DÉPLACEMENT ---
+        # Position en pixels sur la map (coin haut-gauche du sprite)
+        self.x ← start_x
+        self.y ← start_y
+
+        # Direction : détermine quel sprite afficher
+        # "down" par défaut parce que dans les Pokémon le joueur
+        # commence toujours en regardant vers le bas
+        self.direction ← "down"
+
+        # Vitesse de déplacement en pixels par seconde
+        # 160 px/s = 5 tiles par seconde (160 / 32 = 5)
+        # C'est une vitesse confortable pour de l'exploration top-down.
+        # Ni trop lent (frustrant), ni trop rapide (on voit rien).
+        self.vitesse ← 160
+
+        # Flag : est-ce que le joueur est en train de bouger ?
+        # Sert pour l'animation de marche et pour le déclenchement
+        # des rencontres sauvages (on check les herbes que quand on bouge).
+        self.en_mouvement ← False
+
+        # --- RECTANGLE DE COLLISION ---
+        # Le rect fait 32×32 (un tile), calé sur les PIEDS du sprite.
+        # Le sprite lui-même peut être plus grand (32×48 par exemple),
+        # mais la collision ne concerne que les pieds.
+        # Ça permet au personnage de passer "derrière" des obstacles
+        # visuellement plus hauts que lui.
+        self.rect ← pygame.Rect(self.x, self.y, TILE_SIZE, TILE_SIZE)
+
+        # --- ZONE ACTUELLE ---
+        # La zone dans laquelle le joueur se trouve.
+        # "campus" au début, change avec les transitions.
+        self.zone_actuelle ← "campus"
+
+        # --- SPRITES ---
+        # Dictionnaire de listes de sprites par direction.
+        # Chaque direction a plusieurs frames pour l'animation de marche.
+        # Exemple :
+        #   {
+        #       "down": [sprite_idle, sprite_walk1, sprite_walk2],
+        #       "up": [sprite_idle, sprite_walk1, sprite_walk2],
+        #       "left": [...],
+        #       "right": [...]
+        #   }
+        self.sprites ← dictionnaire vide
+        self._charger_sprites()
+
+        # --- ANIMATION ---
+        # frame_index : quel sprite de la liste on affiche actuellement
+        # timer_animation : compteur de temps pour alterner les frames
+        # vitesse_animation : temps entre chaque frame en secondes
+        #   0.15s = ~7 frames d'animation par seconde, ça donne une
+        #   marche naturelle sans être trop rapide
+        self.frame_index ← 0
+        self.timer_animation ← 0
+        self.vitesse_animation ← 0.15
+
+        # --- ÉQUIPE & STOCKAGE ---
+        self.team ← Team()
+        self.storage ← Storage()
+
+        # --- ÉCONOMIE ---
+        # On mettra les vrais objets quand on documentera ces classes.
+        # Pour l'instant on note ce que le Player possédera.
+        # self.inventory ← Inventory()
+        # self.credits_manager ← CreditsManager()
+        self.credits ← 0
+
+        # --- PROGRESSION ---
+        # Les id des dresseurs déjà battus.
+        # Sert à savoir si un dresseur doit déclencher un combat
+        # ou s'il a déjà été vaincu.
+        self.trainers_beaten ← liste vide
+
+        # Les id des défis complétés et en cours.
+        self.quests_completed ← liste vide
+        self.quests_active ← liste vide
+
+        # Temps de jeu total en secondes (pour l'affichage sauvegarde).
+        self.play_time ← 0
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _charger_sprites
+    # -----------------------------------------------------------------
+    #
+    # Charge les sprites du dresseur depuis le dossier assets.
+    # Le chemin dépend du character_id (dresseur 1 ou 2).
+    #
+    # Organisation attendue des fichiers :
+    #   assets/sprites/player/1/down_0.png, down_1.png, down_2.png
+    #   assets/sprites/player/1/up_0.png, up_1.png, up_2.png
+    #   assets/sprites/player/1/left_0.png, ...
+    #   assets/sprites/player/1/right_0.png, ...
+    #   (et pareil dans le dossier 2/ pour le deuxième dresseur)
+    #
+    # Si un fichier sprite est absent, on crée un placeholder
+    # (un rectangle coloré) pour que le jeu crash pas.
+    # C'est temporaire, l'équipe DA remplacera par les vrais sprites.
+
+    MÉTHODE _charger_sprites(self):
+        dossier ← CHEMIN_SPRITES_JOUEUR / str(self.character_id)
+        directions ← ["down", "up", "left", "right"]
+
+        POUR CHAQUE dir DANS directions:
+            self.sprites[dir] ← liste vide
+
+            POUR i DE 0 À 2:     # 3 frames par direction
+                chemin ← dossier / "{}_{}.png".format(dir, i)
+
+                SI le fichier existe à ce chemin:
+                    ESSAYER:
+                        image ← pygame.image.load(chemin).convert_alpha()
+                        ajouter image à self.sprites[dir]
+                    EN CAS D'ERREUR:
+                        ajouter self._creer_placeholder() à self.sprites[dir]
+                SINON:
+                    ajouter self._creer_placeholder() à self.sprites[dir]
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _creer_placeholder
+    # -----------------------------------------------------------------
+    #
+    # Crée un sprite de remplacement si l'image est pas trouvée.
+    # C'est un simple rectangle coloré de la taille d'un tile.
+    # Le joueur verra un carré bizarre mais le jeu plantera pas.
+    #
+    # En dev, ça nous permet de tester l'exploration et le déplacement
+    # avant que l'équipe DA ait livré les sprites.
+
+    MÉTHODE _creer_placeholder(self):
+        surface ← pygame.Surface((TILE_SIZE, TILE_SIZE))
+        surface.fill((255, 0, 255))    # magenta = couleur de debug classique
+        RETOURNER surface
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : move
+    # -----------------------------------------------------------------
+    #
+    # Déplace le joueur dans une direction.
+    # Appelée par state_exploration.py quand le joueur appuie sur
+    # une touche de déplacement (ZQSD ou flèches).
+    #
+    # direction : "up", "down", "left", "right"
+    # dt : delta time en secondes
+    # map_manager : pour vérifier les collisions
+    #
+    # Logique :
+    #   1. On calcule la nouvelle position
+    #   2. On crée un rect de test à cette nouvelle position
+    #   3. On demande à map_manager s'il y a collision
+    #   4. Si pas de collision → on bouge
+    #   5. Si collision → on bouge pas, mais on change quand même
+    #      la direction (le sprite se tourne vers le mur)
+    #
+    # On gère les deux axes séparément (d'abord x, puis y)
+    # pour permettre le "glissement" le long des murs.
+    # Sans ça, si le joueur va en diagonale vers un mur, il est
+    # complètement bloqué. Avec la séparation, il glisse le long du mur
+    # dans la direction libre.
+
+    MÉTHODE move(self, direction, dt, map_manager):
+        self.direction ← direction
+        self.en_mouvement ← True
+
+        # Calculer le déplacement en pixels
+        deplacement ← self.vitesse × dt
+
+        # Calculer la nouvelle position selon la direction
+        nouveau_x ← self.x
+        nouveau_y ← self.y
+
+        SI direction == "up":
+            nouveau_y ← self.y - deplacement
+        SINON SI direction == "down":
+            nouveau_y ← self.y + deplacement
+        SINON SI direction == "left":
+            nouveau_x ← self.x - deplacement
+        SINON SI direction == "right":
+            nouveau_x ← self.x + deplacement
+
+        # Tester la collision sur l'axe X
+        rect_test_x ← pygame.Rect(nouveau_x, self.y, TILE_SIZE, TILE_SIZE)
+        SI NOT map_manager.is_collision(rect_test_x):
+            self.x ← nouveau_x
+
+        # Tester la collision sur l'axe Y
+        rect_test_y ← pygame.Rect(self.x, nouveau_y, TILE_SIZE, TILE_SIZE)
+        SI NOT map_manager.is_collision(rect_test_y):
+            self.y ← nouveau_y
+
+        # Mettre à jour le rect de collision
+        self.rect.x ← self.x
+        self.rect.y ← self.y
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : stop
+    # -----------------------------------------------------------------
+    #
+    # Arrête le mouvement du joueur.
+    # Appelée par state_exploration.py quand le joueur relâche
+    # les touches de déplacement.
+    # Remet le flag en_mouvement à False et l'animation au sprite idle.
+
+    MÉTHODE stop(self):
+        self.en_mouvement ← False
+        self.frame_index ← 0
+        self.timer_animation ← 0
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : update
+    # -----------------------------------------------------------------
+    #
+    # Met à jour l'animation du joueur.
+    # Appelée à chaque frame par state_exploration.py.
+    #
+    # Si le joueur est en mouvement, on avance le timer d'animation.
+    # Quand le timer dépasse vitesse_animation, on passe au sprite
+    # suivant (frame_index). Quand on atteint la dernière frame,
+    # on repart à 0 (boucle).
+    #
+    # dt : delta time pour que l'animation soit indépendante du FPS.
+
+    MÉTHODE update(self, dt):
+        # Compter le temps de jeu
+        self.play_time ← self.play_time + dt
+
+        # Animation de marche
+        SI self.en_mouvement:
+            self.timer_animation ← self.timer_animation + dt
+
+            SI self.timer_animation >= self.vitesse_animation:
+                self.timer_animation ← 0
+                self.frame_index ← self.frame_index + 1
+
+                # Boucler sur les frames disponibles
+                nombre_frames ← len(self.sprites[self.direction])
+                SI self.frame_index >= nombre_frames:
+                    self.frame_index ← 0
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_sprite
+    # -----------------------------------------------------------------
+    #
+    # Renvoie le sprite actuel à afficher.
+    # C'est la bonne frame de la bonne direction.
+    #
+    # Utilisé par state_exploration.py pour dessiner le joueur.
+
+    MÉTHODE get_sprite(self):
+        frames ← self.sprites[self.direction]
+
+        SI self.frame_index < len(frames):
+            RETOURNER frames[self.frame_index]
+        RETOURNER frames[0]
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_center
+    # -----------------------------------------------------------------
+    #
+    # Renvoie la position du centre du joueur en pixels.
+    # C'est ce qu'on passe à camera.update() pour que la caméra
+    # se centre sur le joueur.
+    #
+    # On prend le centre du rect, pas le coin haut-gauche,
+    # comme ça la caméra est bien centrée.
+
+    MÉTHODE get_center(self):
+        RETOURNER (self.x + TILE_SIZE / 2, self.y + TILE_SIZE / 2)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : set_position
+    # -----------------------------------------------------------------
+    #
+    # Téléporte le joueur à une position donnée.
+    # Utilisé quand :
+    #   - On charge une sauvegarde (restaurer la position)
+    #   - On change de zone (placer le joueur au point de spawn)
+    #   - Début de partie (position initiale)
+
+    MÉTHODE set_position(self, x, y):
+        self.x ← x
+        self.y ← y
+        self.rect.x ← x
+        self.rect.y ← y
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : ajouter_dresseur_battu
+    # -----------------------------------------------------------------
+    #
+    # Enregistre qu'un dresseur a été battu (par son id).
+    # Sert à ce que les dresseurs déjà battus ne redéclenchent pas
+    # de combat (ou donnent moins de crédits).
+    #
+    # Vérifie le doublon pour pas ajouter deux fois le même.
+
+    MÉTHODE ajouter_dresseur_battu(self, trainer_id):
+        SI trainer_id N'EST PAS dans self.trainers_beaten:
+            ajouter trainer_id à self.trainers_beaten
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : est_dresseur_battu
+    # -----------------------------------------------------------------
+    #
+    # Vérifie si un dresseur a déjà été battu.
+    # Utilisé par state_exploration.py quand le joueur s'approche
+    # d'un dresseur : si déjà battu, pas de combat (ou comportement
+    # différent).
+
+    MÉTHODE est_dresseur_battu(self, trainer_id):
+        RETOURNER trainer_id EST dans self.trainers_beaten
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : to_dict
+    # -----------------------------------------------------------------
+    #
+    # Convertit toutes les données du joueur en dictionnaire pour
+    # la sauvegarde JSON.
+    #
+    # C'est ici qu'on rassemble TOUT : identité, position, équipe,
+    # stockage, inventaire, crédits, progression...
+    # Un seul appel et on a tout ce qu'il faut pour sauvegarder.
+    #
+    # Appelle to_list() sur team et storage, qui eux appellent
+    # to_dict() sur chaque Pokémon. C'est une chaîne de sérialisation.
+
+    MÉTHODE to_dict(self):
+        RETOURNER {
+            "trainer": {
+                "name": self.name,
+                "character_id": self.character_id,
+                "position": {
+                    "zone": self.zone_actuelle,
+                    "x": self.x,
+                    "y": self.y
+                }
+            },
+            "team": self.team.to_list(),
+            "storage": self.storage.to_list(),
+            # "inventory": self.inventory.to_dict(),   # à intégrer plus tard
+            "credits": self.credits,
+            "trainers_beaten": self.trainers_beaten,
+            "quests_completed": self.quests_completed,
+            "quests_active": self.quests_active,
+            "play_time": self.play_time
+        }
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE DE CLASSE : from_save
+    # -----------------------------------------------------------------
+    #
+    # Crée un objet Player à partir d'un dictionnaire de sauvegarde.
+    # C'est l'inverse de to_dict().
+    #
+    # Quand on charge une sauvegarde, le save_manager lit le JSON
+    # et passe le dictionnaire à cette méthode qui reconstruit tout.
+    #
+    # C'est une méthode de classe (@classmethod) et pas un constructeur
+    # alternatif parce que la logique de reconstruction est différente
+    # de la création d'un nouveau joueur. Avec un classmethod on peut
+    # retourner un objet Player proprement configuré.
+    #
+    # data : le dictionnaire complet de sauvegarde
+    # pokemon_database : la liste de tous les Pokémon du JSON,
+    #   nécessaire pour recréer les objets Pokemon depuis les ids
+
+    MÉTHODE DE CLASSE from_save(cls, data):
+        # Recréer le joueur
+        trainer_data ← data["trainer"]
+        joueur ← cls(
+            character_id=trainer_data["character_id"],
+            name=trainer_data["name"],
+            start_x=trainer_data["position"]["x"],
+            start_y=trainer_data["position"]["y"]
+        )
+
+        joueur.zone_actuelle ← trainer_data["position"]["zone"]
+
+        # Recréer l'équipe
+        liste_team ← liste vide
+        POUR CHAQUE poke_data DANS data["team"]:
+            ajouter Pokemon(poke_data) à liste_team
+        joueur.team ← Team(liste_team)
+
+        # Recréer le stockage
+        liste_storage ← liste vide
+        POUR CHAQUE poke_data DANS data["storage"]:
+            ajouter Pokemon(poke_data) à liste_storage
+        joueur.storage ← Storage(liste_storage)
+
+        # Restaurer l'économie
+        joueur.credits ← data.get("credits", 0)
+        # joueur.inventory ← Inventory.from_dict(data.get("inventory", {}))
+
+        # Restaurer la progression
+        joueur.trainers_beaten ← data.get("trainers_beaten", [])
+        joueur.quests_completed ← data.get("quests_completed", [])
+        joueur.quests_active ← data.get("quests_active", [])
+        joueur.play_time ← data.get("play_time", 0)
+
+        RETOURNER joueur
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE SPÉCIALE : __str__
+    # -----------------------------------------------------------------
+    #
+    # Affichage debug.
+    # Exemple : "Dresseur 'Axel' (perso 1) - Zone: campus - Crédits: 150 - Équipe: 4/6"
+
+    MÉTHODE __str__(self):
+        RETOURNER "Dresseur '{}' (perso {}) - Zone: {} - Crédits: {} - {}".format(
+            self.name, self.character_id, self.zone_actuelle,
+            self.credits, self.team
+        )
