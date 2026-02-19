@@ -1,0 +1,518 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+#
+# settings : pour ATTAQUES_PAR_STADE (nombre d'attaques selon le stade)
+#            et STADES_EVOLUTION (nombre max de stades)
+# On n'importe PAS pygame ici. La classe Pokemon c'est de la logique pure,
+# pas de l'affichage. Les sprites sont gérés par les classes UI.
+
+importer ATTAQUES_PAR_STADE, STADES_EVOLUTION depuis config.settings
+importer math (pour arrondir au supérieur)
+
+
+# =============================================================================
+# CLASSE POKEMON
+# =============================================================================
+#
+# Représente un Pokémon avec toutes ses caractéristiques.
+# C'est un modèle de données avec de la logique de progression.
+
+CLASSE Pokemon:
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+    #
+    # Reçoit un dictionnaire de données (venant du JSON ou d'une sauvegarde)
+    # et construit l'objet Pokémon.
+    #
+    # On sépare les stats de BASE (fixes, propres à l'espèce) et les
+    # stats ACTUELLES (qui dépendent du niveau).
+    #
+    # Paramètre : data → dictionnaire avec toutes les infos du Pokémon.
+    # C'est le code appelant qui le fournit (chargement JSON, capture, etc.)
+    #
+    # Pourquoi un dictionnaire en paramètre plutôt que 15 arguments ?
+    # Parce que c'est plus propre et plus flexible. Si demain on ajoute
+    # un attribut, on rajoute une clé au dico sans changer la signature.
+
+    MÉTHODE __init__(self, data):
+
+        # --- IDENTITÉ ---
+        self.id ← data["id"]
+        self.nom_original ← data["name_original"]
+        self.nom ← data["name_custom"]          # le nom humoristique affiché en jeu
+        self.types ← data["types"]               # liste de 1 ou 2 types (ex: ["feu"] ou ["plante", "poison"])
+
+        # --- STADE D'ÉVOLUTION ---
+        # 1, 2 ou 3. Détermine le nombre max d'attaques et l'apparence.
+        self.stade_evolution ← data.get("evolution_stage", 1)
+
+        # --- STATS DE BASE ---
+        # Les stats brutes de l'espèce au niveau 1.
+        # Elles changent uniquement quand le Pokémon évolue
+        # (remplacées par les stats de base de la forme évoluée).
+        self.base_hp ← data["base_stats"]["hp"]
+        self.base_attack ← data["base_stats"]["attack"]
+        self.base_defense ← data["base_stats"]["defense"]
+
+        # --- NIVEAU & XP ---
+        self.niveau ← data.get("level", 1)
+        self.xp ← data.get("xp", 0)
+        self.xp_prochain_niveau ← self._calculer_xp_prochain_niveau()
+
+        # --- STATS ACTUELLES ---
+        # Calculées à partir des stats de base et du niveau.
+        # Si on charge une sauvegarde, on recalcule pour être sûr
+        # que tout est cohérent.
+        self.pv_max ← self._calculer_stat(self.base_hp)
+        self.attaque ← self._calculer_stat(self.base_attack)
+        self.defense ← self._calculer_stat(self.base_defense)
+
+        # PV actuels : si la sauvegarde en fournit, on les prend.
+        # Sinon on met les PV au max (Pokémon tout frais).
+        self.pv_actuels ← data.get("current_hp", self.pv_max)
+
+        # --- ATTAQUES ---
+        # Liste de dictionnaires {"name": ..., "type": ..., "power": ...}
+        # Le nombre max est limité par le stade d'évolution.
+        self.attaques ← data.get("attacks", [])
+        # Sécurité : on garde que le nombre autorisé
+        max_attaques ← ATTAQUES_PAR_STADE[self.stade_evolution]
+        self.attaques ← self.attaques[:max_attaques]
+
+        # --- ÉVOLUTION ---
+        # Dictionnaire {"to": id_evolution, "level": niveau_requis}
+        # None si le Pokémon est au stade 3 (forme finale).
+        self.evolution_data ← data.get("evolution", None)
+
+        # --- TOUTES LES ATTAQUES POSSIBLES ---
+        # La liste complète des attaques que ce Pokémon peut apprendre.
+        # Stockée pour pouvoir en piocher une à l'évolution.
+        # Vient du JSON, contient plus d'attaques que le max actuel.
+        self.attaques_disponibles ← data.get("all_attacks", [])
+
+        # --- JOUR / NUIT ---
+        # "diurne" ou "nocturne", déterminé par le type dans le JSON.
+        self.day_night ← data.get("day_night", "diurne")
+
+        # --- STATUT ---
+        # None = pas de statut. Sinon : "poison", "brulure", "paralysie", etc.
+        self.statut ← data.get("status", None)
+
+        # --- SPRITES ---
+        # Chemins vers les images. C'est les classes UI qui les chargent,
+        # pas nous. On stocke juste les chemins.
+        self.sprite_front ← data.get("sprite_front", "")
+        self.sprite_back ← data.get("sprite_back", "")
+
+        # --- FLAG KO ---
+        # True si les PV sont à 0. On le calcule au lieu de le stocker
+        # séparément, mais c'est pratique d'avoir la propriété.
+        # → Voir la propriété est_ko plus bas.
+
+
+    # -----------------------------------------------------------------
+    # PROPRIÉTÉ : est_ko
+    # -----------------------------------------------------------------
+    #
+    # Renvoie True si le Pokémon est KO (PV à 0 ou moins).
+    # C'est une propriété (pas une méthode) pour pouvoir écrire
+    # pokemon.est_ko au lieu de pokemon.est_ko().
+    # C'est utilisé partout : combat, équipe, affichage.
+
+    PROPRIÉTÉ est_ko:
+        RETOURNER self.pv_actuels <= 0
+
+
+    # -----------------------------------------------------------------
+    # PROPRIÉTÉ : est_pleine_vie
+    # -----------------------------------------------------------------
+    #
+    # Renvoie True si le Pokémon est à PV max.
+    # Utile pour le centre Pokémon (pas la peine de soigner un
+    # Pokémon qui a déjà tous ses PV) et pour l'affichage.
+
+    PROPRIÉTÉ est_pleine_vie:
+        RETOURNER self.pv_actuels >= self.pv_max
+
+
+    # -----------------------------------------------------------------
+    # PROPRIÉTÉ : peut_evoluer
+    # -----------------------------------------------------------------
+    #
+    # Renvoie True si le Pokémon peut évoluer maintenant.
+    # Conditions :
+    #   1. Il a des données d'évolution (il est pas au stade final)
+    #   2. Son niveau est >= au niveau requis pour l'évolution
+
+    PROPRIÉTÉ peut_evoluer:
+        SI self.evolution_data EST None:
+            RETOURNER False
+        RETOURNER self.niveau >= self.evolution_data["level"]
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _calculer_stat
+    # -----------------------------------------------------------------
+    #
+    # Calcule la stat actuelle à partir de la stat de base et du niveau.
+    #
+    # Formule :
+    #   bonus_par_niveau = stat_base / 10 (arrondi supérieur, minimum 1)
+    #   stat_actuelle = stat_base + (niveau × bonus_par_niveau)
+    #
+    # Exemple : base_attack = 49, niveau = 10
+    #   bonus = ceil(49 / 10) = 5
+    #   stat = 49 + (10 × 5) = 99
+    #
+    # C'est une formule simplifiée mais qui donne une bonne courbe.
+    # Les Pokémon avec des stats de base élevées progressent plus vite,
+    # ce qui récompense le joueur qui fait évoluer ses Pokémon.
+
+    MÉTHODE _calculer_stat(self, stat_base):
+        bonus ← max(1, math.ceil(stat_base / 10))
+        RETOURNER stat_base + (self.niveau × bonus)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _calculer_xp_prochain_niveau
+    # -----------------------------------------------------------------
+    #
+    # Calcule le seuil d'XP pour le prochain level up.
+    #
+    # Formule : niveau_actuel × 20
+    #
+    # Niveau 1 → 20 XP, niveau 5 → 100 XP, niveau 15 → 300 XP.
+    # C'est linéaire, simple, et ça donne une progression naturelle.
+
+    MÉTHODE _calculer_xp_prochain_niveau(self):
+        RETOURNER self.niveau × 20
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : recalculer_stats
+    # -----------------------------------------------------------------
+    #
+    # Recalcule toutes les stats actuelles à partir des bases et du niveau.
+    # Appelée après un level up ou une évolution.
+    #
+    # Pour les PV, on calcule la différence entre l'ancien max et le nouveau.
+    # On ajoute cette différence aux PV actuels.
+    # Comme ça le level up ne soigne pas complètement, mais le Pokémon
+    # gagne les PV bonus du nouveau niveau.
+    #
+    # Exemple :
+    #   Avant : pv_max = 80, pv_actuels = 50
+    #   Après level up : pv_max = 85
+    #   Différence = 85 - 80 = 5
+    #   pv_actuels = 50 + 5 = 55
+
+    MÉTHODE recalculer_stats(self):
+        ancien_pv_max ← self.pv_max
+
+        self.pv_max ← self._calculer_stat(self.base_hp)
+        self.attaque ← self._calculer_stat(self.base_attack)
+        self.defense ← self._calculer_stat(self.base_defense)
+
+        # Ajouter le bonus de PV
+        difference_pv ← self.pv_max - ancien_pv_max
+        self.pv_actuels ← self.pv_actuels + difference_pv
+
+        # Sécurité : les PV actuels dépassent jamais le max
+        SI self.pv_actuels > self.pv_max:
+            self.pv_actuels ← self.pv_max
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : gagner_xp
+    # -----------------------------------------------------------------
+    #
+    # Ajoute de l'XP au Pokémon. Si le seuil est atteint, déclenche
+    # la montée de niveau (possiblement plusieurs d'un coup).
+    #
+    # xp_gagnee : le nombre d'XP à ajouter (calculé par combat.py)
+    #
+    # Renvoie un dictionnaire avec les infos sur ce qui s'est passé :
+    #   {
+    #       "level_ups": nombre de niveaux gagnés,
+    #       "ancien_niveau": le niveau avant,
+    #       "nouveau_niveau": le niveau après,
+    #       "evolution": True/False (si le Pokémon peut maintenant évoluer)
+    #   }
+    #
+    # C'est le code appelant (combat.py / state_combat.py) qui utilise
+    # ce retour pour afficher les messages "Level up !" et déclencher
+    # l'évolution si nécessaire.
+
+    MÉTHODE gagner_xp(self, xp_gagnee):
+        ancien_niveau ← self.niveau
+        level_ups ← 0
+
+        self.xp ← self.xp + xp_gagnee
+
+        # Boucle : on peut monter plusieurs niveaux d'un coup
+        # si on gagne beaucoup d'XP (contre un Pokémon de haut niveau)
+        TANT QUE self.xp >= self.xp_prochain_niveau:
+            self.xp ← self.xp - self.xp_prochain_niveau
+            self.niveau ← self.niveau + 1
+            level_ups ← level_ups + 1
+            self.xp_prochain_niveau ← self._calculer_xp_prochain_niveau()
+            self.recalculer_stats()
+
+        RETOURNER {
+            "level_ups": level_ups,
+            "ancien_niveau": ancien_niveau,
+            "nouveau_niveau": self.niveau,
+            "evolution": self.peut_evoluer
+        }
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : evoluer
+    # -----------------------------------------------------------------
+    #
+    # Fait évoluer le Pokémon vers sa forme suivante.
+    #
+    # evolution_data_complet : le dictionnaire complet du Pokémon évolué
+    #   depuis pokemon.json. On en a besoin pour récupérer les nouvelles
+    #   stats de base, le nouveau nom, les nouveaux sprites, et les
+    #   nouvelles attaques disponibles.
+    #
+    # Ce qui change :
+    #   - nom, nom_original, sprites → ceux de la forme évoluée
+    #   - stats de base → celles de la forme évoluée (plus élevées)
+    #   - stade d'évolution → +1
+    #   - stats actuelles → recalculées avec les nouvelles bases
+    #   - evolution_data → celle de la forme évoluée (ou None si stade 3)
+    #   - une nouvelle attaque est apprise automatiquement
+    #
+    # Le Pokémon garde :
+    #   - son niveau actuel
+    #   - son XP actuelle
+    #   - ses PV actuels (en proportion : si il avait 50% de vie, il
+    #     garde 50% de vie après évolution)
+    #   - ses attaques existantes
+    #   - son statut
+    #
+    # Renvoie le nom de la nouvelle attaque apprise (pour l'affichage).
+
+    MÉTHODE evoluer(self, evolution_data_complet):
+        # Garder le ratio de PV pour pas soigner gratos en évoluant
+        ratio_pv ← self.pv_actuels / self.pv_max
+
+        # Mettre à jour l'identité
+        self.id ← evolution_data_complet["id"]
+        self.nom_original ← evolution_data_complet["name_original"]
+        self.nom ← evolution_data_complet["name_custom"]
+        self.sprite_front ← evolution_data_complet["sprite_front"]
+        self.sprite_back ← evolution_data_complet["sprite_back"]
+
+        # Mettre à jour les stats de base
+        self.base_hp ← evolution_data_complet["base_stats"]["hp"]
+        self.base_attack ← evolution_data_complet["base_stats"]["attack"]
+        self.base_defense ← evolution_data_complet["base_stats"]["defense"]
+
+        # Monter le stade
+        self.stade_evolution ← self.stade_evolution + 1
+
+        # Nouvelles données d'évolution (None si stade 3)
+        self.evolution_data ← evolution_data_complet.get("evolution", None)
+
+        # Mettre à jour les attaques disponibles
+        self.attaques_disponibles ← evolution_data_complet.get("all_attacks", [])
+
+        # Recalculer les stats avec les nouvelles bases
+        self.recalculer_stats()
+
+        # Restaurer le ratio de PV
+        self.pv_actuels ← max(1, int(self.pv_max × ratio_pv))
+
+        # Apprendre une nouvelle attaque
+        nouvelle_attaque_nom ← self._apprendre_nouvelle_attaque()
+
+        RETOURNER nouvelle_attaque_nom
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _apprendre_nouvelle_attaque
+    # -----------------------------------------------------------------
+    #
+    # Quand le Pokémon évolue, il gagne un slot d'attaque et apprend
+    # automatiquement une nouvelle attaque.
+    #
+    # On pioche dans attaques_disponibles la première attaque que
+    # le Pokémon ne connaît pas déjà.
+    #
+    # Si y'a plus d'attaque disponible (ça devrait pas arriver si le
+    # JSON est bien fait), on fait rien.
+    #
+    # Renvoie le nom de l'attaque apprise (pour l'affichage "X a appris Y!")
+    # ou None si aucune attaque n'a été apprise.
+
+    MÉTHODE _apprendre_nouvelle_attaque(self):
+        max_attaques ← ATTAQUES_PAR_STADE[self.stade_evolution]
+
+        # Vérifier qu'on a de la place
+        SI len(self.attaques) >= max_attaques:
+            RETOURNER None
+
+        # Trouver une attaque qu'on connaît pas encore
+        noms_actuels ← [a["name"] POUR CHAQUE a DANS self.attaques]
+
+        POUR CHAQUE attaque DANS self.attaques_disponibles:
+            SI attaque["name"] N'EST PAS dans noms_actuels:
+                ajouter attaque à self.attaques
+                RETOURNER attaque["name"]
+
+        RETOURNER None
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : subir_degats
+    # -----------------------------------------------------------------
+    #
+    # Réduit les PV du Pokémon.
+    # Les PV ne descendent jamais en dessous de 0.
+    #
+    # degats : le nombre de PV à retirer (calculé par damage_calculator.py)
+    #
+    # Renvoie True si le Pokémon est KO après les dégâts, False sinon.
+    # C'est pratique pour combat.py qui doit savoir si le combat continue.
+
+    MÉTHODE subir_degats(self, degats):
+        self.pv_actuels ← self.pv_actuels - degats
+
+        SI self.pv_actuels < 0:
+            self.pv_actuels ← 0
+
+        RETOURNER self.est_ko
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : soigner
+    # -----------------------------------------------------------------
+    #
+    # Restaure des PV au Pokémon.
+    # Utilisée par les potions et le centre Pokémon.
+    #
+    # montant : le nombre de PV à restaurer.
+    # Les PV ne dépassent jamais pv_max.
+    #
+    # Si montant vaut None → soin complet (centre Pokémon).
+
+    MÉTHODE soigner(self, montant=None):
+        SI montant EST None:
+            self.pv_actuels ← self.pv_max
+        SINON:
+            self.pv_actuels ← self.pv_actuels + montant
+            SI self.pv_actuels > self.pv_max:
+                self.pv_actuels ← self.pv_max
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : ranimer
+    # -----------------------------------------------------------------
+    #
+    # Réanime un Pokémon KO avec un pourcentage de ses PV max.
+    # Utilisée par l'objet Rappel.
+    #
+    # pourcentage : entre 0.0 et 1.0 (ex: 0.5 = 50% des PV max)
+    #
+    # Ne fait rien si le Pokémon n'est pas KO.
+
+    MÉTHODE ranimer(self, pourcentage=0.5):
+        SI NOT self.est_ko:
+            RETOURNER
+
+        self.pv_actuels ← max(1, int(self.pv_max × pourcentage))
+        self.statut ← None   # on enlève les statuts aussi
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : soigner_statut
+    # -----------------------------------------------------------------
+    #
+    # Retire le statut négatif du Pokémon.
+    # Utilisée par l'objet Anti-statut et le centre Pokémon.
+
+    MÉTHODE soigner_statut(self):
+        self.statut ← None
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : soin_complet
+    # -----------------------------------------------------------------
+    #
+    # Remet le Pokémon entièrement en état.
+    # PV au max, statut retiré. Même s'il est KO.
+    # C'est ce que fait le centre Pokémon.
+
+    MÉTHODE soin_complet(self):
+        self.pv_actuels ← self.pv_max
+        self.statut ← None
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_pourcentage_pv
+    # -----------------------------------------------------------------
+    #
+    # Renvoie le pourcentage de PV restants entre 0.0 et 1.0.
+    # Utilisé par combat_ui.py pour dessiner la barre de PV
+    # et choisir sa couleur (vert > 50%, jaune > 20%, rouge sinon).
+
+    MÉTHODE get_pourcentage_pv(self):
+        SI self.pv_max == 0:
+            RETOURNER 0.0
+        RETOURNER self.pv_actuels / self.pv_max
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : to_dict
+    # -----------------------------------------------------------------
+    #
+    # Convertit le Pokémon en dictionnaire pour la sauvegarde JSON.
+    # C'est l'inverse du constructeur : on prend l'objet et on le
+    # transforme en dico qu'on peut écrire dans un fichier.
+    #
+    # Le save_manager.py appelle cette méthode sur chaque Pokémon
+    # de l'équipe et du stockage au moment de sauvegarder.
+
+    MÉTHODE to_dict(self):
+        RETOURNER {
+            "id": self.id,
+            "name_original": self.nom_original,
+            "name_custom": self.nom,
+            "types": self.types,
+            "base_stats": {
+                "hp": self.base_hp,
+                "attack": self.base_attack,
+                "defense": self.base_defense
+            },
+            "level": self.niveau,
+            "current_hp": self.pv_actuels,
+            "xp": self.xp,
+            "xp_to_next_level": self.xp_prochain_niveau,
+            "evolution_stage": self.stade_evolution,
+            "attacks": self.attaques,
+            "all_attacks": self.attaques_disponibles,
+            "evolution": self.evolution_data,
+            "day_night": self.day_night,
+            "status": self.statut,
+            "sprite_front": self.sprite_front,
+            "sprite_back": self.sprite_back
+        }
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE SPÉCIALE : __str__
+    # -----------------------------------------------------------------
+    #
+    # Quand on fait print(pokemon), ça affiche un résumé lisible.
+    # C'est super utile pour le debug.
+    # Exemple : "Flamigator (Feu) Niv.15 - PV: 45/80"
+
+    MÉTHODE __str__(self):
+        types_str ← " / ".join(self.types)
+        RETOURNER "{nom} ({types}) Niv.{niveau} - PV: {pv_actuels}/{pv_max}"
