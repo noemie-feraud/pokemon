@@ -1,0 +1,90 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+#
+# pygame : pour pygame.mixer (musique et sons)
+# os : pour vérifier si les fichiers audio existent avant de les charger
+# settings : pour les chemins vers les dossiers music/ et sfx/
+
+importer pygame
+importer os
+importer CHEMIN_MUSIQUES, CHEMIN_SFX depuis config.settings
+
+
+# =============================================================================
+# CLASSE AUDIO MANAGER
+# =============================================================================
+#
+# Gère toute la partie sonore du jeu.
+# Centralise la lecture des musiques et des SFX.
+# Gère les transitions entre musiques (fadeout).
+# Ne plante pas si un fichier audio est absent.
+
+CLASSE AudioManager:
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+    #
+    # On initialise le mixer Pygame et on pré-charge tous les SFX.
+    #
+    # Les musiques ne sont PAS pré-chargées. pygame.mixer.music
+    # fonctionne en streaming, on charge à la demande quand on veut
+    # jouer un morceau. C'est plus léger en mémoire.
+    #
+    # Les SFX SONT pré-chargés. pygame.mixer.Sound charge le fichier
+    # en entier en mémoire. On fait ça une seule fois au démarrage
+    # pour éviter les micro-freezes en plein jeu quand on joue un son.
+    #
+    # musique_actuelle : le nom de la musique en cours, pour éviter
+    #   de relancer la même musique si on est déjà dessus.
+    #
+    # volume_musique / volume_sfx : entre 0.0 (muet) et 1.0 (max).
+    #   On les met à des valeurs par défaut raisonnables.
+    #   Le joueur pourrait les modifier plus tard via un menu options
+    #   (mais c'est du Won't Have pour l'instant).
+    #
+    # audio_disponible : booléen qui dit si le mixer Pygame a pu
+    #   s'initialiser. Sur certaines machines sans carte son, ça échoue.
+    #   Si c'est False, toutes les méthodes ne font rien (pas de crash).
+
+    MÉTHODE __init__(self):
+        # Vérifier si le mixer fonctionne
+        ESSAYER:
+            SI pygame.mixer n'est pas initialisé:
+                pygame.mixer.init()
+            self.audio_disponible ← True
+        EN CAS D'ERREUR:
+            afficher warning ("Mixer audio non disponible")
+            self.audio_disponible ← False
+
+        self.musique_actuelle ← None
+        self.volume_musique ← 0.5
+        self.volume_sfx ← 0.7
+
+        # Dictionnaire des chemins de musique (chargées à la demande)
+        self.musiques ← {
+            "menu": CHEMIN_MUSIQUES / "menu.ogg",
+            "exploration_campus": CHEMIN_MUSIQUES / "exploration_campus.ogg",
+            "exploration_alentours": CHEMIN_MUSIQUES / "exploration_alentours.ogg",
+            "combat_wild": CHEMIN_MUSIQUES / "combat_wild.ogg",
+            "combat_trainer": CHEMIN_MUSIQUES / "combat_trainer.ogg",
+            "tournament": CHEMIN_MUSIQUES / "tournament.ogg",
+            "victory": CHEMIN_MUSIQUES / "victory.ogg",
+            "defeat": CHEMIN_MUSIQUES / "defeat.ogg"
+        }
+
+        # Pré-charger les SFX
+        self.sfx ← dictionnaire vide
+        sfx_a_charger ← {
+            "attack": CHEMIN_SFX / "attack.ogg",
+            "capture": CHEMIN_SFX / "capture.ogg",
+            "heal": CHEMIN_SFX / "heal.ogg",
+            "levelup": CHEMIN_SFX / "levelup.ogg",
+            "evolution": CHEMIN_SFX / "evolution.ogg",
+            "dialogue_bip": CHEMIN_SFX / "dialogue_bip.ogg",
+            "menu_select": CHEMIN_SFX / "menu_select.ogg"
+        }
+
+        POUR CHAQUE nom, chemin DANS sfx_a_charger:
+            SI le fichier existe à ce chemin ET audio_disp
