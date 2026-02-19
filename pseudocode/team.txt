@@ -1,0 +1,340 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+#
+# settings : pour la constante TAILLE_MAX_EQUIPE (6)
+
+importer TAILLE_MAX_EQUIPE depuis config.settings
+
+
+# =============================================================================
+# CLASSE TEAM
+# =============================================================================
+#
+# Gère l'équipe active de Pokémon (max 6).
+# Garantit les règles : pas plus de 6, toujours au moins 1 valide.
+
+CLASSE Team:
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+    #
+    # pokemon_list : liste d'objets Pokemon pour initialiser l'équipe.
+    #   Par défaut c'est vide (début de partie, avant le choix du starter).
+    #   Quand on charge une sauvegarde, on passe la liste sauvegardée.
+    #
+    # On copie la liste pour éviter les effets de bord.
+    # Si quelqu'un modifie la liste originale dehors, ça impacte pas
+    # notre équipe.
+
+    MÉTHODE __init__(self, pokemon_list=None):
+        SI pokemon_list EST None:
+            self.pokemons ← liste vide
+        SINON:
+            self.pokemons ← copie de pokemon_list
+
+
+    # -----------------------------------------------------------------
+    # PROPRIÉTÉ : taille
+    # -----------------------------------------------------------------
+    #
+    # Renvoie le nombre de Pokémon dans l'équipe.
+    # Pratique pour les vérifications et l'affichage.
+    # Exemple : "Équipe : 4/6"
+
+    PROPRIÉTÉ taille:
+        RETOURNER len(self.pokemons)
+
+
+    # -----------------------------------------------------------------
+    # PROPRIÉTÉ : est_pleine
+    # -----------------------------------------------------------------
+    #
+    # Renvoie True si l'équipe a atteint la taille max (6).
+    # Utilisé par capture_system.py : si l'équipe est pleine,
+    # le Pokémon capturé va au stockage.
+
+    PROPRIÉTÉ est_pleine:
+        RETOURNER self.taille >= TAILLE_MAX_EQUIPE
+
+
+    # -----------------------------------------------------------------
+    # PROPRIÉTÉ : est_vide
+    # -----------------------------------------------------------------
+    #
+    # Renvoie True si l'équipe est vide.
+    # Ça devrait jamais arriver en jeu normal (on a toujours au moins
+    # le starter), mais c'est une sécurité.
+
+    PROPRIÉTÉ est_vide:
+        RETOURNER self.taille == 0
+
+
+    # -----------------------------------------------------------------
+    # PROPRIÉTÉ : a_pokemon_valide
+    # -----------------------------------------------------------------
+    #
+    # Renvoie True s'il y a au moins 1 Pokémon non-KO dans l'équipe.
+    # C'est LA vérification cruciale en combat.
+    # Si ça renvoie False → le joueur a perdu le combat.
+    # Aussi utilisé pour la règle "toujours au moins 1 valide"
+    # quand on essaie de retirer un Pokémon.
+
+    PROPRIÉTÉ a_pokemon_valide:
+        POUR CHAQUE pokemon DANS self.pokemons:
+            SI NOT pokemon.est_ko:
+                RETOURNER True
+        RETOURNER False
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_premier_valide
+    # -----------------------------------------------------------------
+    #
+    # Renvoie le premier Pokémon non-KO de l'équipe.
+    # C'est celui qui est envoyé en début de combat.
+    #
+    # Renvoie None si tout le monde est KO (ça veut dire que le
+    # joueur devrait pas être en combat, c'est un cas d'erreur).
+
+    MÉTHODE get_premier_valide(self):
+        POUR CHAQUE pokemon DANS self.pokemons:
+            SI NOT pokemon.est_ko:
+                RETOURNER pokemon
+        RETOURNER None
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_pokemon
+    # -----------------------------------------------------------------
+    #
+    # Renvoie le Pokémon à un index donné.
+    # L'index correspond à la position dans l'équipe (0 à 5).
+    #
+    # Renvoie None si l'index est invalide.
+    # Utilisé par combat_ui.py quand le joueur choisit quel Pokémon
+    # envoyer, et par team_screen.py pour l'affichage.
+
+    MÉTHODE get_pokemon(self, index):
+        SI index < 0 OU index >= self.taille:
+            RETOURNER None
+        RETOURNER self.pokemons[index]
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_all
+    # -----------------------------------------------------------------
+    #
+    # Renvoie la liste complète des Pokémon de l'équipe.
+    # Renvoie une copie pour que le code extérieur puisse pas
+    # modifier directement notre liste interne.
+    #
+    # Utilisé par team_screen.py, save_manager.py, pokemon_center.py
+
+    MÉTHODE get_all(self):
+        RETOURNER copie de self.pokemons
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : ajouter
+    # -----------------------------------------------------------------
+    #
+    # Ajoute un Pokémon à l'équipe.
+    #
+    # Renvoie True si l'ajout a réussi, False si l'équipe est pleine.
+    # C'est capture_system.py qui appelle ça après une capture réussie.
+    # Si ça renvoie False, le Pokémon doit aller au stockage.
+
+    MÉTHODE ajouter(self, pokemon):
+        SI self.est_pleine:
+            RETOURNER False
+
+        ajouter pokemon à self.pokemons
+        RETOURNER True
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : retirer
+    # -----------------------------------------------------------------
+    #
+    # Retire un Pokémon de l'équipe par son index.
+    #
+    # Avant de retirer, on vérifie :
+    #   1. L'index est valide
+    #   2. Après le retrait, il reste au moins 1 Pokémon non-KO
+    #      (règle CA-87)
+    #
+    # Pourquoi on simule avant de retirer ? Parce que si le joueur
+    # essaie de retirer son seul Pokémon vivant, on doit refuser.
+    # On peut pas retirer d'abord et remettre après, ça serait sale.
+    #
+    # Renvoie le Pokémon retiré si ça a marché, None sinon.
+    # Utilisé par pokemon_center.py pour les échanges équipe ↔ stockage.
+
+    MÉTHODE retirer(self, index):
+        SI index < 0 OU index >= self.taille:
+            RETOURNER None
+
+        pokemon_a_retirer ← self.pokemons[index]
+
+        # Simuler le retrait pour vérifier la règle
+        equipe_apres ← copie de self.pokemons SANS l'élément à l'index
+        au_moins_un_valide ← False
+        POUR CHAQUE p DANS equipe_apres:
+            SI NOT p.est_ko:
+                au_moins_un_valide ← True
+                SORTIR DE LA BOUCLE
+
+        # Si l'équipe serait vide ou sans Pokémon valide → refus
+        SI equipe_apres est vide OU NOT au_moins_un_valide:
+            RETOURNER None
+
+        # Tout est ok, on retire
+        retirer self.pokemons[index]
+        RETOURNER pokemon_a_retirer
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : echanger
+    # -----------------------------------------------------------------
+    #
+    # Échange deux Pokémon de position dans l'équipe.
+    # Utilisé par team_screen.py pour réordonner l'équipe.
+    #
+    # Le joueur veut mettre son Pokémon de feu en premier parce qu'il
+    # va affronter un dresseur plante ? Il échange les positions.
+    #
+    # index_a, index_b : les deux positions à échanger.
+    # Renvoie True si l'échange a réussi, False si un index est invalide.
+
+    MÉTHODE echanger(self, index_a, index_b):
+        SI index_a < 0 OU index_a >= self.taille:
+            RETOURNER False
+        SI index_b < 0 OU index_b >= self.taille:
+            RETOURNER False
+        SI index_a == index_b:
+            RETOURNER False
+
+        # Swap classique
+        self.pokemons[index_a], self.pokemons[index_b] ← self.pokemons[index_b], self.pokemons[index_a]
+        RETOURNER True
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : soigner_tous
+    # -----------------------------------------------------------------
+    #
+    # Soigne tous les Pokémon de l'équipe (PV max + retrait statuts).
+    # C'est ce que fait le centre Pokémon quand on parle à l'infirmière.
+    # Un seul appel et tout le monde est remis en état.
+
+    MÉTHODE soigner_tous(self):
+        POUR CHAQUE pokemon DANS self.pokemons:
+            pokemon.soin_complet()
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_valides
+    # -----------------------------------------------------------------
+    #
+    # Renvoie la liste des Pokémon non-KO.
+    # Utilisé par combat_ui.py pour afficher seulement les Pokémon
+    # que le joueur peut envoyer au combat (pas ceux qui sont KO).
+
+    MÉTHODE get_valides(self):
+        valides ← liste vide
+        POUR CHAQUE pokemon DANS self.pokemons:
+            SI NOT pokemon.est_ko:
+                ajouter pokemon à valides
+        RETOURNER valides
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_ko
+    # -----------------------------------------------------------------
+    #
+    # Renvoie la liste des Pokémon KO.
+    # Utilisé par l'inventaire quand le joueur veut utiliser un Rappel :
+    # on lui montre que les Pokémon KO comme cibles possibles.
+
+    MÉTHODE get_ko(self):
+        ko ← liste vide
+        POUR CHAQUE pokemon DANS self.pokemons:
+            SI pokemon.est_ko:
+                ajouter pokemon à ko
+        RETOURNER ko
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : nombre_valides
+    # -----------------------------------------------------------------
+    #
+    # Renvoie le nombre de Pokémon non-KO.
+    # Utilisé par combat.py pour vérifier si le joueur peut
+    # continuer le combat ou s'il a perdu.
+
+    MÉTHODE nombre_valides(self):
+        RETOURNER len(self.get_valides())
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : contient
+    # -----------------------------------------------------------------
+    #
+    # Vérifie si un Pokémon (par son id) est déjà dans l'équipe.
+    # Utile pour des vérifications mais pas essentiel pour le gameplay.
+
+    MÉTHODE contient(self, pokemon_id):
+        POUR CHAQUE pokemon DANS self.pokemons:
+            SI pokemon.id == pokemon_id:
+                RETOURNER True
+        RETOURNER False
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : to_list
+    # -----------------------------------------------------------------
+    #
+    # Convertit l'équipe en liste de dictionnaires pour la sauvegarde.
+    # Appelle to_dict() sur chaque Pokémon.
+    #
+    # Utilisé par save_manager.py.
+
+    MÉTHODE to_list(self):
+        RETOURNER [pokemon.to_dict() POUR CHAQUE pokemon DANS self.pokemons]
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE SPÉCIALE : __len__
+    # -----------------------------------------------------------------
+    #
+    # Permet d'écrire len(team) au lieu de team.taille.
+    # C'est une convention Python, ça rend la classe plus "naturelle".
+
+    MÉTHODE __len__(self):
+        RETOURNER self.taille
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE SPÉCIALE : __iter__
+    # -----------------------------------------------------------------
+    #
+    # Permet de faire "POUR pokemon DANS team:" directement.
+    # Sans ça, il faudrait écrire "POUR pokemon DANS team.pokemons:".
+    # C'est plus propre et plus Pythonic.
+
+    MÉTHODE __iter__(self):
+        RETOURNER itérateur sur self.pokemons
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE SPÉCIALE : __str__
+    # -----------------------------------------------------------------
+    #
+    # Affichage debug. Exemple :
+    # "Équipe (3/6) : Flamigator Niv.15, AquaBug Niv.12, VolTech Niv.8"
+
+    MÉTHODE __str__(self):
+        noms ← ["{} Niv.{}".format(p.nom, p.niveau) POUR CHAQUE p DANS self.pokemons]
+        RETOURNER "Équipe ({}/{}) : {}".format(self.taille, TAILLE_MAX_EQUIPE, ", ".join(noms))
