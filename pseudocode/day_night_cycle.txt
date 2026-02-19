@@ -1,0 +1,176 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+#
+# pygame : pour créer la surface du filtre nuit
+# settings : pour les constantes du cycle (heures, ratio, alpha, couleurs)
+
+importer pygame
+importer (DEBUT_JOUR, DEBUT_NUIT, DUREE_CYCLE_JEU, RATIO_TEMPS,
+         PENALITE_JOUR_NUIT, COULEUR_FILTRE_NUIT, ALPHA_FILTRE_NUIT,
+         SCREEN_WIDTH, SCREEN_HEIGHT) depuis config.settings
+
+
+# =============================================================================
+# CLASSE DAY NIGHT CYCLE
+# =============================================================================
+
+CLASSE DayNightCycle:
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+    #
+    # temps_actuel : le temps en minutes de jeu (0 à 1439).
+    #   Par défaut on démarre à 480 = 8h00 du matin.
+    #   Comme ça le joueur commence sa partie en plein jour,
+    #   il a le temps de s'installer avant que la nuit tombe.
+    #
+    # filtre_surface : la surface Pygame semi-transparente qu'on
+    #   dessine par-dessus la map pour l'effet de nuit.
+    #   On la crée une seule fois ici et on change juste son alpha
+    #   à chaque frame. C'est mieux en performance que de recréer
+    #   une surface à chaque frame.
+    #
+    # DEBUT_CREPUSCULE et DEBUT_AUBE : les heures de début des
+    #   transitions progressives. On les calcule à partir de
+    #   DEBUT_JOUR et DEBUT_NUIT.
+    #   Crépuscule : 2h avant la nuit (18h00 si nuit à 20h00)
+    #   Aube : 2h avant le jour (4h00 si jour à 6h00)
+    #   La durée de transition de 2h (en jeu) = 5 minutes réelles,
+    #   c'est assez pour que le joueur voie le changement sans que
+    #   ce soit trop long.
+
+    MÉTHODE __init__(self):
+        self.temps_actuel ← 480      # 8h00 du matin
+
+        # Constantes de transition
+        self.DEBUT_CREPUSCULE ← DEBUT_NUIT - 120    # 1200 - 120 = 1080 (18h00)
+        self.DUREE_CREPUSCULE ← 120                  # 2h de transition
+        self.DEBUT_AUBE ← DEBUT_JOUR - 120           # 360 - 120 = 240 (4h00)
+        self.DUREE_AUBE ← 120                        # 2h de transition
+
+        # Surface du filtre nuit
+        self.filtre_surface ← pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+        self.filtre_surface.fill(COULEUR_FILTRE_NUIT)
+
+        # Alpha actuel du filtre (0 = invisible, ALPHA_FILTRE_NUIT = max)
+        self.alpha_actuel ← 0
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : update
+    # -----------------------------------------------------------------
+    #
+    # Appelée à chaque frame par game.py.
+    # Fait avancer l'horloge et recalcule l'alpha du filtre.
+    #
+    # dt : delta time en secondes (temps réel depuis la dernière frame).
+    #
+    # On multiplie dt par RATIO_TEMPS pour convertir en minutes de jeu :
+    #   dt_reel × 0.4 = minutes de jeu ajoutées
+    #
+    # Quand on dépasse 1440 (minuit), on repart à 0.
+    # C'est l'opérateur modulo (%) qui fait ça.
+
+    MÉTHODE update(self, dt):
+        # Avancer l'horloge
+        self.temps_actuel ← self.temps_actuel + (dt × RATIO_TEMPS)
+
+        # Boucler si on dépasse minuit
+        SI self.temps_actuel >= DUREE_CYCLE_JEU:
+            self.temps_actuel ← self.temps_actuel % DUREE_CYCLE_JEU
+
+        # Recalculer l'alpha du filtre
+        self._update_alpha()
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _update_alpha
+    # -----------------------------------------------------------------
+    #
+    # Calcule l'opacité du filtre nuit selon l'heure.
+    #
+    # 4 phases dans le cycle :
+    #
+    # 1. PLEIN JOUR (6h00 → 18h00) : alpha = 0
+    #    Le filtre est invisible, la map est éclairée normalement.
+    #
+    # 2. CRÉPUSCULE (18h00 → 20h00) : alpha monte de 0 à ALPHA_MAX
+    #    Transition progressive. On calcule le pourcentage d'avancement
+    #    dans le crépuscule et on l'applique à l'alpha max.
+    #    Exemple : à 19h00 on est à 50% du crépuscule → alpha = 60
+    #
+    # 3. PLEINE NUIT (20h00 → 4h00) : alpha = ALPHA_MAX
+    #    Le filtre est au max, il fait bien sombre.
+    #
+    # 4. AUBE (4h00 → 6h00) : alpha descend de ALPHA_MAX à 0
+    #    Transition inverse du crépuscule.
+    #
+    # Note : la pleine nuit inclut un passage par minuit (20h00 → 23h59
+    # puis 00h00 → 4h00). Le code gère les deux cas.
+
+    MÉTHODE _update_alpha(self):
+        temps ← self.temps_actuel
+
+        # Phase 1 : Plein jour
+        SI temps >= DEBUT_JOUR ET temps < self.DEBUT_CREPUSCULE:
+            self.alpha_actuel ← 0
+
+        # Phase 2 : Crépuscule (transition jour → nuit)
+        SINON SI temps >= self.DEBUT_CREPUSCULE ET temps < DEBUT_NUIT:
+            progression ← (temps - self.DEBUT_CREPUSCULE) / self.DUREE_CREPUSCULE
+            self.alpha_actuel ← int(ALPHA_FILTRE_NUIT × progression)
+
+        # Phase 3 : Pleine nuit (de DEBUT_NUIT à DEBUT_AUBE, en passant par minuit)
+        SINON SI temps >= DEBUT_NUIT OU temps < self.DEBUT_AUBE:
+            self.alpha_actuel ← ALPHA_FILTRE_NUIT
+
+        # Phase 4 : Aube (transition nuit → jour)
+        SINON SI temps >= self.DEBUT_AUBE ET temps < DEBUT_JOUR:
+            progression ← (temps - self.DEBUT_AUBE) / self.DUREE_AUBE
+            self.alpha_actuel ← int(ALPHA_FILTRE_NUIT × (1 - progression))
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : draw_filter
+    # -----------------------------------------------------------------
+    #
+    # Dessine le filtre nuit par-dessus l'écran.
+    # Appelée par state_exploration.py APRÈS avoir dessiné la map,
+    # les sprites, les PNJ, etc. Le filtre se pose par-dessus tout.
+    #
+    # Si l'alpha est 0 (plein jour), on dessine rien du tout.
+    # C'est une optimisation : pas la peine de blitter une surface
+    # transparente, ça consomme du CPU pour rien.
+    #
+    # set_alpha() change la transparence de la surface.
+    # blit() la colle par-dessus l'écran.
+
+    MÉTHODE draw_filter(self, screen):
+        SI self.alpha_actuel > 0:
+            self.filtre_surface.set_alpha(self.alpha_actuel)
+            screen.blit(self.filtre_surface, (0, 0))
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : is_day
+    # -----------------------------------------------------------------
+    #
+    # Renvoie True s'il fait jour, False sinon.
+    # Jour = de DEBUT_JOUR (6h00) à DEBUT_NUIT (20h00).
+    #
+    # Utilisé par damage_calculator.py pour la pénalité nocturne.
+
+    MÉTHODE is_day(self):
+        RETOURNER self.temps_actuel >= DEBUT_JOUR ET self.temps_actuel < DEBUT_NUIT
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : is_night
+    # -----------------------------------------------------------------
+    #
+    # Renvoie True s'il fait nuit, False sinon.
+    # C'est juste l'inverse de is_day().
+    #
+    # Utilisé par damage_calculator.py pour la pénalité diurne.
