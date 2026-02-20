@@ -1,0 +1,85 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+#
+# NPC : la classe mère
+# StateShop : l'état qu'on push quand le joueur ouvre la boutique
+# On importe StateShop ici et pas dans NPC parce que c'est spécifique
+# au vendeur. Les autres PNJ n'en ont pas besoin.
+
+importer NPC depuis entities.npc
+
+
+# =============================================================================
+# CLASSE NPC SHOPKEEPER
+# =============================================================================
+#
+# Le vendeur de la boutique.
+# Hérite de NPC. Redéfinit on_dialogue_end() pour ouvrir la boutique.
+
+CLASSE NPCShopkeeper (hérite de NPC):
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+    #
+    # On appelle le constructeur de NPC.
+    # Le vendeur n'a pas d'attribut supplémentaire par rapport à NPC.
+    # Toute sa logique est dans on_dialogue_end().
+
+    MÉTHODE __init__(self, data):
+        super().__init__(data)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : on_dialogue_end (redéfinition)
+    # -----------------------------------------------------------------
+    #
+    # Appelée quand le dialogue d'accueil est terminé.
+    # On ouvre la boutique en pushant un StateShop sur la pile d'états.
+    #
+    # Le StateShop reçoit :
+    #   - game_manager : pour accéder au joueur (crédits, inventaire)
+    #   - self : référence vers le vendeur, pour que StateShop puisse
+    #     récupérer les dialogues contextuels ("no_money", "purchase")
+    #     et les afficher au bon moment
+    #
+    # Quand le joueur ferme la boutique, StateShop se pop tout seul
+    # et on revient à l'exploration. Le vendeur n'a rien à faire de plus.
+
+    MÉTHODE on_dialogue_end(self, game_manager):
+        # Import ici pour éviter les imports circulaires.
+        # state_shop.py importe des trucs de economy/ qui pourraient
+        # indirectement importer entities/. En important ici (dans la
+        # méthode) plutôt qu'en haut du fichier, on casse le cycle.
+        importer StateShop depuis states.state_shop
+
+        shop_state ← StateShop(game_manager, self)
+        game_manager.state_manager.push(shop_state)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_dialogue_achat
+    # -----------------------------------------------------------------
+    #
+    # Renvoie le dialogue à afficher après un achat réussi.
+    # Appelée par StateShop quand une transaction est confirmée.
+    #
+    # C'est pas un dialogue qui passe par on_interact() / on_dialogue_end().
+    # C'est un dialogue "ponctuel" que StateShop affiche directement
+    # dans son interface (un petit message en bas de l'écran boutique).
+
+    MÉTHODE get_dialogue_achat(self):
+        RETOURNER self.dialogues.get("purchase", ["Merci pour votre achat !"])
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_dialogue_pas_assez
+    # -----------------------------------------------------------------
+    #
+    # Renvoie le dialogue quand le joueur n'a pas assez de crédits.
+    # Appelée par StateShop quand le joueur essaie d'acheter un objet
+    # qu'il peut pas se payer.
+
+    MÉTHODE get_dialogue_pas_assez(self):
+        RETOURNER self.dialogues.get("no_money", ["Vous n'avez pas assez de crédits..."])
