@@ -1,0 +1,230 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+#
+# NPC : la classe mère
+# Pokemon : pour créer l'instance du starter choisi
+# On aura besoin de charger les données des 3 starters depuis le JSON.
+
+importer NPC depuis entities.npc
+importer Pokemon depuis entities.pokemon
+importer json
+importer FICHIER_POKEMON depuis config.settings
+
+
+# =============================================================================
+# CONSTANTES
+# =============================================================================
+#
+# Le niveau de départ du starter.
+# 5 c'est le standard Pokémon. Assez fort pour survivre aux premiers
+# combats, assez faible pour laisser de la progression.
+
+NIVEAU_STARTER ← 5
+
+
+# =============================================================================
+# CLASSE NPC PROFESSOR
+# =============================================================================
+#
+# Le professeur qui donne le starter en début de partie.
+# Hérite de NPC. Redéfinit get_dialogue() et on_dialogue_end().
+
+CLASSE NPCProfessor (hérite de NPC):
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+    #
+    # On appelle le constructeur de NPC.
+    #
+    # starter_ids : les ids des 3 starters dans pokemon.json.
+    #   Vient des données du PNJ dans npcs.json.
+    #   Exemple : [1, 19, 37] → le premier Pokémon de chaque lignée
+    #   (feu id 1, eau id 19, plante id 37).
+    #
+    # starter_donne : flag pour savoir si le professeur a déjà
+    #   donné le starter. Évite les bugs si le joueur reparle
+    #   au professeur pile après le choix.
+
+    MÉTHODE __init__(self, data):
+        super().__init__(data)
+
+        # Les ids des 3 starters
+        self.starter_ids ← data.get("starter_ids", [1, 19, 37])
+
+        # Flag : est-ce que le starter a été donné ?
+        self.starter_donne ← False
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_dialogue (redéfinition)
+    # -----------------------------------------------------------------
+    #
+    # Choisit le bon dialogue selon le contexte.
+    #
+    # Si le joueur n'a pas encore de Pokémon → dialogue "first_meeting"
+    #   C'est le grand discours de bienvenue, l'intro du jeu.
+    #
+    # Si le starter vient d'être donné → dialogue "after_starter"
+    #   Un mot d'encouragement juste après le choix.
+    #
+    # Si le joueur revient plus tard → dialogue "default"
+    #   Un dialogue court et sympa.
+
+    MÉTHODE get_dialogue(self):
+        SI NOT self.starter_donne:
+            RETOURNER self.dialogues.get("first_meeting", [
+                "Bienvenue à La Plateforme !",
+                "Je suis le Professeur de cette école.",
+                "Ici, on apprend en codant... et en dressant des Pokémon !",
+                "C'est l'heure de choisir ton premier compagnon !"
+            ])
+
+        RETOURNER self.dialogues.get("default", [
+            "Ton aventure se passe bien ?",
+            "Continue comme ça, tu vas devenir le meilleur dresseur de La Plateforme !"
+        ])
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : on_dialogue_end (redéfinition)
+    # -----------------------------------------------------------------
+    #
+    # Appelée quand le dialogue est terminé.
+    #
+    # Si le joueur n'a pas encore de Pokémon dans son équipe
+    # → on lance l'écran de sélection du starter.
+    #
+    # Sinon → rien de spécial, le dialogue se ferme.
+    #
+    # Le flow :
+    #   1. Vérifier si l'équipe est vide
+    #   2. Si oui → charger les données des 3 starters depuis le JSON
+    #   3. Push un écran de sélection
+    #   4. Quand le joueur choisit → callback qui crée le Pokémon
+    #      et l'ajoute à l'équipe
+
+    MÉTHODE on_dialogue_end(self, game_manager):
+        # Si le joueur a déjà des Pokémon, rien à faire
+        SI NOT game_manager.player.team.est_vide:
+            RETOURNER
+
+        # Si on a déjà donné le starter (sécurité anti-bug)
+        SI self.starter_donne:
+            RETOURNER
+
+        # Charger les données des 3 starters
+        starters_data ← self._charger_starters()
+
+        SI starters_data EST vide:
+            # Si on peut pas charger les données, on fait rien
+            # (le JSON est pas encore prêt ou corrompu)
+            RETOURNER
+
+        # Push l'écran de sélection du starter
+        # On lui passe les données des 3 starters et une callback
+        # qui sera appelée quand le joueur aura choisi.
+        importer StateStarterSelect depuis states.state_starter_select
+
+        starter_state ← StateStarterSelect(
+            game_manager,
+            starters_data,
+            callback_choix=self._on_starter_choisi
+        )
+        game_manager.state_manager.push(starter_state)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _charger_starters
+    # -----------------------------------------------------------------
+    #
+    # Charge les données des 3 starters depuis pokemon.json.
+    # On lit le fichier, on filtre les 3 ids, et on renvoie les données.
+    #
+    # Renvoie une liste de 3 dictionnaires (les données brutes de
+    # chaque starter), ou une liste vide si ça échoue.
+    #
+    # On charge le fichier à chaque fois (pas de cache) parce que
+    # cette méthode est appelée une seule fois dans toute la partie.
+    # Pas besoin d'optimiser.
+
+    MÉTHODE _charger_starters(self):
+        ESSAYER:
+            ouvrir FICHIER_POKEMON en lecture
+            tous_les_pokemon ← json.load(fichier)
+
+            starters ← liste vide
+            POUR CHAQUE pokemon_data DANS tous_les_pokemon:
+                SI pokemon_data["id"] EST dans self.starter_ids:
+                    ajouter pokemon_data à starters
+
+            RETOURNER starters
+
+        EN CAS D'ERREUR:
+            afficher warning ("Impossible de charger les starters")
+            RETOURNER liste vide
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _on_starter_choisi
+    # -----------------------------------------------------------------
+    #
+    # Callback appelée par StateStarterSelect quand le joueur a
+    # fait son choix.
+    #
+    # starter_data : le dictionnaire du Pokémon choisi.
+    # game_manager : pour accéder au joueur et à l'audio.
+    #
+    # Étapes :
+    #   1. Créer l'instance de Pokemon à partir des données
+    #   2. Mettre le Pokémon au NIVEAU_STARTER (niveau 5)
+    #   3. L'ajouter à l'équipe du joueur
+    #   4. Marquer le starter comme donné
+    #   5. Jouer un son
+    #   6. Lancer un dialogue de confirmation
+
+    MÉTHODE _on_starter_choisi(self, starter_data, game_manager):
+        # Préparer les données du starter au bon niveau
+        starter_data["level"] ← NIVEAU_STARTER
+
+        # Créer l'instance de Pokémon
+        starter ← Pokemon(starter_data)
+
+        # Recalculer les stats pour le niveau 5
+        # (le constructeur les a déjà calculées avec le level passé,
+        # mais on s'assure que tout est cohérent)
+        starter.recalculer_stats()
+
+        # PV au max pour bien commencer
+        starter.pv_actuels ← starter.pv_max
+
+        # Ajouter à l'équipe du joueur
+        game_manager.player.team.ajouter(starter)
+
+        # Marquer que le starter a été donné
+        self.starter_donne ← True
+
+        # Jouer le son
+        game_manager.audio_manager.play_sfx("levelup")
+
+        # Dialogue de confirmation
+        lignes ← self.dialogues.get("after_starter", [
+            "{} a rejoint ton équipe !".format(starter.nom),
+            "Prends-en bien soin !",
+            "L'aventure commence maintenant !"
+        ])
+
+        # Remplacer le placeholder par le vrai nom si besoin
+        lignes_finales ← liste vide
+        POUR CHAQUE ligne DANS lignes:
+            ajouter ligne.replace("{pokemon_name}", starter.nom) à lignes_finales
+
+        importer StateDialogue depuis states.state_dialogue
+
+        dialogue_state ← StateDialogue(
+            game_manager,
+            lignes_finales,
+            callback_fin=None   # pas d'action après ce dialogue
+        )
+        game_manager.state_manager.push(dialogue_state)
