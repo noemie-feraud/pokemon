@@ -1,0 +1,421 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+#
+# NPC : la classe mère
+# Pokemon : pour créer les Pokémon de l'équipe du dresseur
+# Team : pour stocker l'équipe du dresseur
+# settings : pour TILE_SIZE (calcul du champ de vision)
+#            et FICHIER_POKEMON (chargement des données Pokémon)
+
+importer NPC depuis entities.npc
+importer Pokemon depuis entities.pokemon
+importer Team depuis entities.team
+importer json
+importer pygame
+importer TILE_SIZE, FICHIER_POKEMON depuis config.settings
+
+
+# =============================================================================
+# CLASSE TRAINER
+# =============================================================================
+#
+# Dresseur adverse. Hérite de NPC.
+# A une équipe de Pokémon, un champ de vision, et déclenche un combat.
+
+CLASSE Trainer (hérite de NPC):
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+    #
+    # data : dictionnaire venant de trainers.json.
+    #
+    # En plus de tout ce que NPC initialise (position, sprite, dialogues),
+    # le dresseur a :
+    #   - une équipe de Pokémon (Team)
+    #   - un niveau de combat (battle_level)
+    #   - une récompense en crédits
+    #   - une portée de vision
+    #   - un rectangle de champ de vision (calculé selon la direction)
+
+    MÉTHODE __init__(self, data):
+        # Appeler le constructeur de NPC
+        super().__init__(data)
+
+        # --- COMBAT ---
+        self.battle_level ← data.get("battle_level", 1)
+        self.reward_credits ← data.get("reward_credits", 20)
+
+        # --- ÉQUIPE DE POKÉMON ---
+        # On crée les Pokémon à partir des données du JSON.
+        # Chaque entrée de "team" contient un pokemon_id et un level.
+        # On charge les données complètes depuis pokemon.json.
+        self.team_data ← data.get("team", [])
+        self.team ← self._creer_equipe()
+
+        # --- CHAMP DE VISION ---
+        # Nombre de tiles devant le dresseur où il repère le joueur.
+        # 3 par défaut : assez pour surprendre le joueur, pas trop
+        # pour qu'il puisse pas l'éviter du tout.
+        self.vision_range ← data.get("vision_range", 3)
+
+        # Le rectangle du champ de vision est calculé selon la direction
+        # dans laquelle le dresseur regarde.
+        self.vision_rect ← self._calculer_vision_rect()
+
+        # --- RÉFÉRENCE AU GAME MANAGER ---
+        # Stockée temporairement pendant on_interact() pour que
+        # on_dialogue_end() puisse y accéder.
+        self._game_manager_ref ← None
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _creer_equipe
+    # -----------------------------------------------------------------
+    #
+    # Crée l'équipe de Pokémon du dresseur à partir des données du JSON.
+    #
+    # Pour chaque entrée dans self.team_data :
+    #   1. Charger les données du Pokémon depuis pokemon.json via son id
+    #   2. Mettre le bon niveau
+    #   3. Créer l'instance de Pokemon
+    #   4. L'ajouter à la Team
+    #
+    # On charge pokemon.json une seule fois et on filtre dedans.
+    #
+    # Si le fichier est pas disponible (l'autre dev a pas encore
+    # fini le scraping), on crée une équipe vide. Le jeu plantera pas,
+    # le combat sera juste bizarre.
+
+    MÉTHODE _creer_equipe(self):
+        liste_pokemon ← liste vide
+
+        ESSAYER:
+            ouvrir FICHIER_POKEMON en lecture
+            tous_les_pokemon ← json.load(fichier)
+
+            # Indexer par id pour un accès rapide
+            index_pokemon ← dictionnaire vide
+            POUR CHAQUE poke DANS tous_les_pokemon:
+                index_pokemon[poke["id"]] ← poke
+
+            POUR CHAQUE entry DANS self.team_data:
+                pokemon_id ← entry["pokemon_id"]
+                niveau ← entry["level"]
+
+                SI pokemon_id EST dans index_pokemon:
+                    # Copier les données pour pas modifier l'original
+                    poke_data ← copie de index_pokemon[pokemon_id]
+                    poke_data["level"] ← niveau
+
+                    pokemon ← Pokemon(poke_data)
+                    pokemon.recalculer_stats()
+                    pokemon.pv_actuels ← pokemon.pv_max    # pleine vie
+
+                    ajouter pokemon à liste_pokemon
+
+        EN CAS D'ERREUR:
+            afficher warning ("Impossible de charger l'équipe du dresseur " + self.name)
+
+        RETOURNER Team(liste_pokemon)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _calculer_vision_rect
+    # -----------------------------------------------------------------
+    #
+    # Calcule le rectangle du champ de vision du dresseur.
+    # C'est un rectangle de largeur 1 tile et de longueur
+    # vision_range tiles, placé devant le dresseur selon sa direction.
+    #
+    # Exemple pour un dresseur en (160, 96) regardant vers le bas
+    # avec une vision de 3 tiles (TILE_SIZE = 32) :
+    #
+    #   rect = pygame.Rect(160, 128, 32, 96)
+    #   → x=160 (même colonne que le dresseur)
+    #   → y=128 (1 tile en dessous du dresseur = 96 + 32)
+    #   → largeur=32 (1 tile)
+    #   → hauteur=96 (3 tiles × 32)
+    #
+    # Si le dresseur regarde à gauche :
+    #   rect = pygame.Rect(160 - 3×32, 96, 96, 32)
+    #   → on part de 3 tiles à gauche du dresseur
+    #   → largeur=96 (3 tiles), hauteur=32 (1 tile)
+
+    MÉTHODE _calculer_vision_rect(self):
+        portee_px ← self.vision_range × TILE_SIZE
+
+        SI self.direction == "down":
+            RETOURNER pygame.Rect(
+                self.x,
+                self.y + TILE_SIZE,     # commence 1 tile en dessous
+                TILE_SIZE,               # largeur : 1 tile
+                portee_px                # longueur : vision_range tiles
+            )
+
+        SI self.direction == "up":
+            RETOURNER pygame.Rect(
+                self.x,
+                self.y - portee_px,     # commence vision_range tiles au-dessus
+                TILE_SIZE,
+                portee_px
+            )
+
+        SI self.direction == "left":
+            RETOURNER pygame.Rect(
+                self.x - portee_px,     # commence vision_range tiles à gauche
+                self.y,
+                portee_px,
+                TILE_SIZE
+            )
+
+        SI self.direction == "right":
+            RETOURNER pygame.Rect(
+                self.x + TILE_SIZE,     # commence 1 tile à droite
+                self.y,
+                portee_px,
+                TILE_SIZE
+            )
+
+        # Fallback (devrait pas arriver)
+        RETOURNER pygame.Rect(0, 0, 0, 0)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : is_player_in_vision
+    # -----------------------------------------------------------------
+    #
+    # Vérifie si le joueur est dans le champ de vision du dresseur.
+    # Appelée à chaque frame par state_exploration.py.
+    #
+    # Conditions pour que le combat se déclenche :
+    #   1. Le joueur est dans le vision_rect
+    #   2. Le dresseur n'a PAS déjà été battu
+    #
+    # player : l'objet Player (on utilise son rect de collision)
+    # game_manager : pour vérifier si le dresseur est déjà battu
+    #
+    # Renvoie True si le combat doit se déclencher, False sinon.
+
+    MÉTHODE is_player_in_vision(self, player, game_manager):
+        # Déjà battu ? On repère plus personne.
+        SI game_manager.player.est_dresseur_battu(self.id):
+            RETOURNER False
+
+        # Vérifier si le rect du joueur touche le champ de vision
+        RETOURNER self.vision_rect.colliderect(player.rect)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_dialogue (redéfinition)
+    # -----------------------------------------------------------------
+    #
+    # Choisit le dialogue selon le contexte.
+    #
+    # Si le dresseur n'a pas encore été battu → dialogue "challenge"
+    #   C'est la provocation avant le combat.
+    #
+    # Si le dresseur a déjà été battu → dialogue "already_beaten"
+    #   Un petit mot post-combat.
+    #
+    # On a besoin de savoir si le dresseur est battu, mais get_dialogue()
+    # est appelé par on_interact() qui a accès au game_manager.
+    # On stocke une référence temporaire dans _game_manager_ref.
+
+    MÉTHODE get_dialogue(self):
+        SI self._game_manager_ref EST NOT None:
+            SI self._game_manager_ref.player.est_dresseur_battu(self.id):
+                RETOURNER self.dialogues.get("already_beaten",
+                    ["Tu m'as déjà battu, pas la peine de remettre ça !"])
+
+        RETOURNER self.dialogues.get("challenge",
+            ["Hey ! Prépare-toi au combat !"])
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : on_interact (redéfinition)
+    # -----------------------------------------------------------------
+    #
+    # On redéfinit on_interact() pour stocker la référence au
+    # game_manager avant que get_dialogue() soit appelé.
+    # Ensuite on appelle le comportement de base (NPC.on_interact).
+
+    MÉTHODE on_interact(self, game_manager):
+        self._game_manager_ref ← game_manager
+        super().on_interact(game_manager)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : on_dialogue_end (redéfinition)
+    # -----------------------------------------------------------------
+    #
+    # Appelée quand le dialogue est terminé.
+    #
+    # Si le dresseur n'a pas été battu → on lance le combat.
+    # Si le dresseur a déjà été battu → rien, le dialogue se ferme.
+    #
+    # Le combat est lancé en pushant un StateCombat sur la pile d'états.
+    # On lui passe :
+    #   - l'équipe du dresseur
+    #   - une callback pour quand le combat est fini
+    #   - le type de combat ("trainer")
+    #
+    # La callback _on_combat_end est appelée par StateCombat quand
+    # le combat se termine. C'est elle qui donne les crédits et
+    # marque le dresseur comme battu.
+
+    MÉTHODE on_dialogue_end(self, game_manager):
+        # Si déjà battu, rien à faire
+        SI game_manager.player.est_dresseur_battu(self.id):
+            RETOURNER
+
+        # Restaurer les PV de l'équipe du dresseur
+        # Au cas où le joueur a perdu un précédent combat contre ce dresseur
+        # (les Pokémon du dresseur doivent être en pleine forme)
+        self.team.soigner_tous()
+
+        # Lancer le combat
+        importer StateCombat depuis states.state_combat
+
+        combat_state ← StateCombat(
+            game_manager,
+            equipe_adverse=self.team,
+            type_combat="trainer",
+            callback_victoire=self._on_victoire,
+            callback_defaite=self._on_defaite,
+            trainer_name=self.name
+        )
+        game_manager.state_manager.push(combat_state)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _on_victoire
+    # -----------------------------------------------------------------
+    #
+    # Callback appelée par StateCombat quand le joueur gagne.
+    #
+    # Étapes :
+    #   1. Marquer le dresseur comme battu
+    #   2. Donner les crédits au joueur
+    #   3. Jouer un son de victoire
+    #   4. Lancer le dialogue de défaite du dresseur
+    #
+    # game_manager : passé par StateCombat.
+
+    MÉTHODE _on_victoire(self, game_manager):
+        player ← game_manager.player
+
+        # Marquer comme battu
+        player.ajouter_dresseur_battu(self.id)
+
+        # Donner les crédits
+        player.credits ← player.credits + self.reward_credits
+
+        # Jouer la musique de victoire
+        game_manager.audio_manager.play_music("victory", loop=False)
+
+        # Dialogue de défaite
+        lignes ← self.dialogues.get("defeat", ["Bien joué..."])
+
+        # Ajouter le message de crédits gagnés
+        lignes_finales ← copie de lignes
+        ajouter "Tu as gagné {} crédits !".format(self.reward_credits) à lignes_finales
+
+        importer StateDialogue depuis states.state_dialogue
+
+        dialogue_state ← StateDialogue(
+            game_manager,
+            lignes_finales,
+            callback_fin=None    # rien après ce dialogue
+        )
+        game_manager.state_manager.push(dialogue_state)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _on_defaite
+    # -----------------------------------------------------------------
+    #
+    # Callback appelée par StateCombat quand le joueur perd.
+    #
+    # Le joueur est renvoyé au centre Pokémon de la zone.
+    # Ses Pokémon sont soignés automatiquement (convention Pokémon).
+    # Le dresseur n'est PAS marqué comme battu.
+    #
+    # game_manager : passé par StateCombat.
+
+    MÉTHODE _on_defaite(self, game_manager):
+        player ← game_manager.player
+
+        # Soigner l'équipe (convention Pokémon : on soigne après un blackout)
+        player.team.soigner_tous()
+
+        # Jouer la musique de défaite
+        game_manager.audio_manager.play_music("defeat", loop=False)
+
+        # Dialogue de défaite
+        lignes ← ["Tous tes Pokémon sont KO...",
+                   "Tu es ramené au Centre Pokémon."]
+
+        importer StateDialogue depuis states.state_dialogue
+
+        dialogue_state ← StateDialogue(
+            game_manager,
+            lignes,
+            callback_fin=self._retour_centre_pokemon
+        )
+        game_manager.state_manager.push(dialogue_state)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _retour_centre_pokemon
+    # -----------------------------------------------------------------
+    #
+    # Téléporte le joueur au centre Pokémon de sa zone actuelle.
+    # Appelée après le dialogue de défaite.
+    #
+    # On charge le spawn du centre Pokémon depuis le map_manager
+    # et on téléporte le joueur à cette position.
+    #
+    # C'est l'équivalent du "blackout" dans les vrais Pokémon.
+
+    MÉTHODE _retour_centre_pokemon(self, game_manager):
+        # Récupérer le spawn du centre Pokémon
+        # Le map_manager a un spawn spécial pour le retour après défaite
+        # On utilise le spawn de type "pokemon_center" de la zone actuelle
+        spawn ← game_manager.map_manager.get_spawn_position("pokemon_center")
+
+        SI spawn EST NOT None:
+            game_manager.player.set_position(spawn[0], spawn[1])
+
+        # Relancer la musique d'exploration
+        zone ← game_manager.player.zone_actuelle
+        game_manager.audio_manager.play_music("exploration_" + zone)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : to_dict (redéfinition)
+    # -----------------------------------------------------------------
+    #
+    # Sérialisation pour le debug.
+    # On ajoute les infos spécifiques au dresseur par rapport à
+    # la version de NPC.
+
+    MÉTHODE to_dict(self):
+        base ← super().to_dict()
+        base["battle_level"] ← self.battle_level
+        base["reward_credits"] ← self.reward_credits
+        base["vision_range"] ← self.vision_range
+        base["team_size"] ← self.team.taille
+        RETOURNER base
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE SPÉCIALE : __str__
+    # -----------------------------------------------------------------
+
+    MÉTHODE __str__(self):
+        RETOURNER "Dresseur '{}' (B{}) @ {} - Équipe: {} Pokémon - {} crédits".format(
+            self.name, self.battle_level, self.zone,
+            self.team.taille, self.reward_credits
+        )
