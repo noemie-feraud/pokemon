@@ -1,0 +1,384 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+
+importer NPC depuis entities.npc
+importer json
+importer FICHIER_QUESTS depuis config.settings
+
+
+# =============================================================================
+# CLASSE NPC QUEST
+# =============================================================================
+#
+# PNJ qui propose des défis au joueur.
+# Hérite de NPC. Redéfinit get_dialogue() et on_dialogue_end().
+# Son comportement change selon l'état du défi qu'il porte.
+
+CLASSE NPCQuest (hérite de NPC):
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+    #
+    # data : les données du PNJ depuis npcs.json
+    #
+    # quest_data : les données du défi associé à ce PNJ.
+    #   Soit passé directement dans data, soit chargé depuis quests.json
+    #   en matchant le npc_id.
+    #
+    # Les états possibles du défi pour ce PNJ :
+    #   "available" → le joueur n'a pas encore accepté le défi
+    #   "active" → le joueur a accepté, le défi est en cours
+    #   "complete" → les conditions sont remplies, récompense à récupérer
+    #   "done" → la récompense a été donnée, c'est fini
+
+    MÉTHODE __init__(self, data, quest_data=None):
+        super().__init__(data)
+
+        # Les données du défi
+        self.quest_data ← quest_data
+
+        # Si les données du défi sont pas passées directement,
+        # on essaie de les charger depuis quests.json
+        SI self.quest_data EST None:
+            self.quest_data ← self._charger_quest_data()
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _charger_quest_data
+    # -----------------------------------------------------------------
+    #
+    # Cherche le défi associé à ce PNJ dans quests.json.
+    # Match sur le champ "npc_id" du JSON.
+    #
+    # Renvoie le dictionnaire du défi, ou None si pas trouvé.
+
+    MÉTHODE _charger_quest_data(self):
+        ESSAYER:
+            ouvrir FICHIER_QUESTS en lecture
+            toutes_les_quests ← json.load(fichier)
+
+            POUR CHAQUE quest DANS toutes_les_quests:
+                SI quest["npc_id"] == self.id:
+                    RETOURNER quest
+
+        EN CAS D'ERREUR:
+            afficher warning ("Impossible de charger les quêtes")
+
+        RETOURNER None
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _get_quest_state
+    # -----------------------------------------------------------------
+    #
+    # Détermine l'état actuel du défi pour ce PNJ.
+    # On regarde dans les données du joueur :
+    #   - Si le défi est dans quests_completed → "done"
+    #   - Si le défi est dans quests_active → vérifier si complété
+    #     - Si les conditions sont remplies → "complete"
+    #     - Sinon → "active"
+    #   - Sinon → "available"
+    #
+    # game_manager : pour accéder au joueur et à ses quêtes.
+    #
+    # Renvoie un string : "available", "active", "complete" ou "done".
+
+    MÉTHODE _get_quest_state(self, game_manager):
+        SI self.quest_data EST None:
+            RETOURNER "done"    # pas de défi = rien à faire
+
+        quest_id ← self.quest_data["id"]
+        player ← game_manager.player
+
+        # Déjà récompensé ?
+        SI quest_id EST dans player.quests_completed:
+            RETOURNER "done"
+
+        # En cours ?
+        SI quest_id EST dans player.quests_active:
+            # Vérifier si les conditions sont remplies
+            SI self._verifier_conditions(game_manager):
+                RETOURNER "complete"
+            RETOURNER "active"
+
+        # Pas encore commencé
+        RETOURNER "available"
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _verifier_conditions
+    # -----------------------------------------------------------------
+    #
+    # Vérifie si les conditions du défi sont remplies.
+    # Délègue à des méthodes spécialisées selon le type de défi.
+    #
+    # C'est ici qu'on regarde concrètement si le joueur a capturé
+    # assez de Pokémon, monté assez de niveaux, etc.
+    #
+    # game_manager : pour accéder à l'équipe, au stockage, etc.
+    #
+    # Renvoie True si les conditions sont remplies, False sinon.
+
+    MÉTHODE _verifier_conditions(self, game_manager):
+        type_defi ← self.quest_data["type"]
+        player ← game_manager.player
+
+        SI type_defi == "capture_type":
+            RETOURNER self._check_capture_type(player)
+
+        SI type_defi == "level_up":
+            RETOURNER self._check_level_up(player)
+
+        SI type_defi == "defeat_trainers":
+            RETOURNER self._check_defeat_trainers(player)
+
+        SI type_defi == "exploration":
+            # Pour l'exploration, c'est géré par un flag quelque part.
+            # On simplifie : le joueur doit avoir ramassé un objet spécifique.
+            # Pour l'instant on renvoie False.
+            RETOURNER False
+
+        RETOURNER False
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _check_capture_type
+    # -----------------------------------------------------------------
+    #
+    # Vérifie le défi "capturer X Pokémon d'un type donné".
+    # On compte dans l'équipe + le stockage.
+    #
+    # Exemple : "Capture 3 Pokémon de type Eau"
+    #   → on compte tous les Pokémon de type Eau dans l'équipe
+    #     et le stockage. Si >= 3, c'est bon.
+
+    MÉTHODE _check_capture_type(self, player):
+        type_cible ← self.quest_data["target_type"]
+        nombre_cible ← self.quest_data["target_count"]
+
+        compteur ← 0
+
+        # Compter dans l'équipe
+        POUR CHAQUE pokemon DANS player.team:
+            SI type_cible EST dans pokemon.types:
+                compteur ← compteur + 1
+
+        # Compter dans le stockage
+        POUR CHAQUE pokemon DANS player.storage:
+            SI type_cible EST dans pokemon.types:
+                compteur ← compteur + 1
+
+        RETOURNER compteur >= nombre_cible
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _check_level_up
+    # -----------------------------------------------------------------
+    #
+    # Vérifie le défi "monter un Pokémon au niveau X".
+    # Il suffit qu'un seul Pokémon de l'équipe ait atteint le niveau.
+
+    MÉTHODE _check_level_up(self, player):
+        niveau_cible ← self.quest_data["target_level"]
+
+        POUR CHAQUE pokemon DANS player.team:
+            SI pokemon.niveau >= niveau_cible:
+                RETOURNER True
+
+        RETOURNER False
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _check_defeat_trainers
+    # -----------------------------------------------------------------
+    #
+    # Vérifie le défi "battre X dresseurs".
+    # On compte le nombre de dresseurs dans la liste trainers_beaten.
+
+    MÉTHODE _check_defeat_trainers(self, player):
+        nombre_cible ← self.quest_data["target_count"]
+        RETOURNER len(player.trainers_beaten) >= nombre_cible
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _get_progression
+    # -----------------------------------------------------------------
+    #
+    # Renvoie la progression actuelle du défi sous forme de string.
+    # Exemple : "2/3" pour "2 Pokémon de type Eau capturés sur 3 demandés".
+    #
+    # Utilisé pour remplacer les placeholders dans les dialogues.
+
+    MÉTHODE _get_progression(self, game_manager):
+        type_defi ← self.quest_data["type"]
+        player ← game_manager.player
+
+        SI type_defi == "capture_type":
+            type_cible ← self.quest_data["target_type"]
+            compteur ← 0
+            POUR CHAQUE pokemon DANS player.team:
+                SI type_cible EST dans pokemon.types:
+                    compteur ← compteur + 1
+            POUR CHAQUE pokemon DANS player.storage:
+                SI type_cible EST dans pokemon.types:
+                    compteur ← compteur + 1
+            RETOURNER "{}/{}".format(compteur, self.quest_data["target_count"])
+
+        SI type_defi == "level_up":
+            niveau_max ← 0
+            POUR CHAQUE pokemon DANS player.team:
+                SI pokemon.niveau > niveau_max:
+                    niveau_max ← pokemon.niveau
+            RETOURNER "Niv.{}/{}".format(niveau_max, self.quest_data["target_level"])
+
+        SI type_defi == "defeat_trainers":
+            RETOURNER "{}/{}".format(
+                len(player.trainers_beaten),
+                self.quest_data["target_count"]
+            )
+
+        RETOURNER "?"
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_dialogue (redéfinition)
+    # -----------------------------------------------------------------
+    #
+    # Choisit le dialogue selon l'état du défi.
+    # On a besoin du game_manager pour connaître l'état, mais
+    # get_dialogue() est appelé par on_interact() qui n'a pas
+    # toujours le game_manager sous la main.
+    #
+    # Du coup on utilise un attribut temporaire self._current_state
+    # qui est mis à jour au début de on_interact().
+
+    MÉTHODE get_dialogue(self):
+        SI self.quest_data EST None:
+            RETOURNER self.dialogues.get("default", ["..."])
+
+        dialogues_quest ← self.quest_data.get("dialogues", {})
+
+        SI self._current_state == "available":
+            RETOURNER dialogues_quest.get("propose", ["J'ai un défi pour toi !"])
+
+        SI self._current_state == "active":
+            lignes ← dialogues_quest.get("active", ["Continue, t'y es presque !"])
+            # Remplacer les placeholders de progression
+            lignes_finales ← liste vide
+            POUR CHAQUE ligne DANS lignes:
+                ligne ← ligne.replace("{progress}", self._current_progress)
+                ligne ← ligne.replace("{target}", str(self.quest_data.get("target_count", "?")))
+                ajouter ligne à lignes_finales
+            RETOURNER lignes_finales
+
+        SI self._current_state == "complete":
+            lignes ← dialogues_quest.get("complete", ["Bravo, t'as réussi !"])
+            reward ← self.quest_data.get("reward", {})
+            reward_str ← str(reward.get("amount", 0))
+            lignes_finales ← liste vide
+            POUR CHAQUE ligne DANS lignes:
+                ajouter ligne.replace("{reward}", reward_str) à lignes_finales
+            RETOURNER lignes_finales
+
+        SI self._current_state == "done":
+            RETOURNER dialogues_quest.get("done", ["T'as déjà relevé mon défi !"])
+
+        RETOURNER ["..."]
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : on_interact (redéfinition)
+    # -----------------------------------------------------------------
+    #
+    # On redéfinit on_interact() (pas juste on_dialogue_end())
+    # parce qu'on a besoin de calculer l'état du défi AVANT de
+    # choisir le dialogue. get_dialogue() a besoin de connaître
+    # l'état pour renvoyer les bonnes lignes.
+    #
+    # Séquence :
+    #   1. Calculer l'état du défi
+    #   2. Calculer la progression
+    #   3. Stocker dans des attributs temporaires
+    #   4. Appeler le on_interact() de la classe mère (qui lance le dialogue)
+
+    MÉTHODE on_interact(self, game_manager):
+        SI NOT self.interactif:
+            RETOURNER
+
+        # Calculer l'état et la progression avant le dialogue
+        self._current_state ← self._get_quest_state(game_manager)
+        self._current_progress ← self._get_progression(game_manager)
+        self._game_manager_ref ← game_manager
+
+        # Appeler le comportement de base (tourner + lancer dialogue)
+        super().on_interact(game_manager)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : on_dialogue_end (redéfinition)
+    # -----------------------------------------------------------------
+    #
+    # Appelée quand le dialogue est terminé.
+    # L'action dépend de l'état du défi :
+    #
+    # "available" → le joueur vient d'entendre la proposition
+    #   → On ajoute le défi aux quêtes actives du joueur
+    #
+    # "active" → le joueur a eu le rappel de progression
+    #   → Rien de spécial
+    #
+    # "complete" → le joueur vient de voir le dialogue de félicitations
+    #   → On donne la récompense
+    #   → On déplace le défi de "active" à "completed"
+    #
+    # "done" → le joueur a revu le PNJ après avoir tout fini
+    #   → Rien
+
+    MÉTHODE on_dialogue_end(self, game_manager):
+        SI self.quest_data EST None:
+            RETOURNER
+
+        quest_id ← self.quest_data["id"]
+        player ← game_manager.player
+
+        SI self._current_state == "available":
+            # Activer le défi
+            SI quest_id N'EST PAS dans player.quests_active:
+                ajouter quest_id à player.quests_active
+
+        SI self._current_state == "complete":
+            # Donner la récompense
+            self._donner_recompense(game_manager)
+
+            # Déplacer de active à completed
+            SI quest_id EST dans player.quests_active:
+                retirer quest_id de player.quests_active
+            SI quest_id N'EST PAS dans player.quests_completed:
+                ajouter quest_id à player.quests_completed
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _donner_recompense
+    # -----------------------------------------------------------------
+    #
+    # Attribue la récompense du défi au joueur.
+    # Selon le type de récompense :
+    #   - "credits" → ajouter des crédits
+    #   - "item" → ajouter un objet à l'inventaire
+    #
+    # game_manager : pour accéder au joueur.
+
+    MÉTHODE _donner_recompense(self, game_manager):
+        reward ← self.quest_data.get("reward", {})
+        player ← game_manager.player
+
+        SI reward["type"] == "credits":
+            player.credits ← player.credits + reward["amount"]
+            game_manager.audio_manager.play_sfx("levelup")
+
+        SI reward["type"] == "item":
+            # On ajoutera ça quand l'inventaire sera implémenté
+            # player.inventory.ajouter(reward["item_id"], reward.get("amount", 1))
+            game_manager.audio_manager.play_sfx("menu_select")
