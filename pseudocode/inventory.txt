@@ -1,0 +1,365 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+#
+# ItemCatalog : pour accéder aux fiches techniques des objets.
+#   L'inventaire stocke des ids, mais quand on veut afficher le nom
+#   ou la description d'un objet, on interroge le catalogue.
+
+importer ItemCatalog depuis entities.item
+
+
+# =============================================================================
+# CLASSE INVENTORY
+# =============================================================================
+#
+# Gère les objets possédés par le joueur avec leurs quantités.
+# Stocke internement un dictionnaire {item_id: quantité}.
+# Accède au ItemCatalog pour les infos détaillées des objets.
+
+CLASSE Inventory:
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+    #
+    # item_catalog : référence vers le catalogue d'objets du jeu.
+    #   On en a besoin pour transformer un item_id en objet Item
+    #   avec son nom, sa description, son effet, etc.
+    #
+    # items : le dictionnaire interne {item_id: quantité}.
+    #   Vide au départ, rempli par les achats et les ramassages.
+
+    MÉTHODE __init__(self, item_catalog):
+        self.item_catalog ← item_catalog
+        self.items ← dictionnaire vide
+
+
+    # -----------------------------------------------------------------
+    # PROPRIÉTÉ : est_vide
+    # -----------------------------------------------------------------
+    #
+    # Renvoie True si le joueur n'a aucun objet.
+    # Utilisé par state_inventory.py pour afficher "Sac vide"
+    # au lieu d'une liste vide.
+
+    PROPRIÉTÉ est_vide:
+        RETOURNER len(self.items) == 0
+
+
+    # -----------------------------------------------------------------
+    # PROPRIÉTÉ : nombre_total
+    # -----------------------------------------------------------------
+    #
+    # Renvoie le nombre total d'objets (toutes quantités additionnées).
+    # Exemple : 3 potions + 5 pokéballs + 1 rappel = 9 objets.
+    # Utile pour l'affichage "Sac : 9 objets".
+
+    PROPRIÉTÉ nombre_total:
+        total ← 0
+        POUR CHAQUE quantite DANS self.items.values():
+            total ← total + quantite
+        RETOURNER total
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : ajouter
+    # -----------------------------------------------------------------
+    #
+    # Ajoute une quantité d'un objet dans l'inventaire.
+    # Si l'objet est déjà présent, on ajoute à la quantité existante.
+    # Si l'objet est nouveau, on crée l'entrée.
+    #
+    # item_id : l'id de l'objet (correspond à une entrée dans items.json)
+    # quantite : combien on ajoute (par défaut 1)
+    #
+    # Appelé par :
+    #   - shop.py après un achat
+    #   - state_exploration.py quand le joueur ramasse un objet au sol
+    #   - npc_professor.py ou événements de début de partie
+    #   - npc_quest.py quand la récompense est un objet
+    #
+    # On vérifie que l'item_id existe dans le catalogue avant d'ajouter.
+    # Si l'id est inconnu, on fait rien (protection contre les bugs).
+
+    MÉTHODE ajouter(self, item_id, quantite=1):
+        # Vérifier que l'objet existe dans le catalogue
+        SI self.item_catalog.get_item(item_id) EST None:
+            afficher warning ("Item inconnu : " + str(item_id))
+            RETOURNER
+
+        SI item_id EST dans self.items:
+            self.items[item_id] ← self.items[item_id] + quantite
+        SINON:
+            self.items[item_id] ← quantite
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : retirer
+    # -----------------------------------------------------------------
+    #
+    # Retire une quantité d'un objet de l'inventaire.
+    # Si la quantité tombe à 0 (ou moins), on supprime l'entrée.
+    #
+    # item_id : l'id de l'objet
+    # quantite : combien on retire (par défaut 1)
+    #
+    # Renvoie True si le retrait a réussi, False si le joueur
+    # n'a pas assez de cet objet (ou pas du tout).
+    #
+    # Appelé par :
+    #   - state_combat.py quand le joueur utilise un objet en combat
+    #   - state_inventory.py quand le joueur utilise un objet hors combat
+    #
+    # On vérifie AVANT de retirer qu'on a assez. On retire pas
+    # d'abord pour remettre après si ça marche pas. C'est plus propre.
+
+    MÉTHODE retirer(self, item_id, quantite=1):
+        SI item_id N'EST PAS dans self.items:
+            RETOURNER False
+
+        SI self.items[item_id] < quantite:
+            RETOURNER False
+
+        self.items[item_id] ← self.items[item_id] - quantite
+
+        # Si on tombe à 0, on supprime l'entrée
+        SI self.items[item_id] <= 0:
+            supprimer self.items[item_id]
+
+        RETOURNER True
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_quantite
+    # -----------------------------------------------------------------
+    #
+    # Renvoie la quantité possédée d'un objet.
+    # Renvoie 0 si le joueur n'a pas cet objet.
+    #
+    # Utilisé par :
+    #   - capture_system.py : "le joueur a-t-il des pokéballs ?"
+    #   - state_shop.py : afficher la quantité possédée à côté du prix
+    #   - state_combat.py : griser les objets dont la quantité est 0
+
+    MÉTHODE get_quantite(self, item_id):
+        RETOURNER self.items.get(item_id, 0)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : possede
+    # -----------------------------------------------------------------
+    #
+    # Renvoie True si le joueur possède au moins 1 exemplaire de cet objet.
+    # C'est un raccourci pour get_quantite(item_id) > 0.
+    # Plus lisible dans le code appelant.
+
+    MÉTHODE possede(self, item_id):
+        RETOURNER self.get_quantite(item_id) > 0
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_all
+    # -----------------------------------------------------------------
+    #
+    # Renvoie la liste complète du contenu de l'inventaire.
+    # Chaque entrée est un tuple (objet Item, quantité).
+    #
+    # On transforme les ids en objets Item via le catalogue.
+    # Comme ça le code appelant a directement accès au nom,
+    # à la description, à l'effet de chaque objet.
+    #
+    # Utilisé par state_inventory.py pour afficher tout le sac.
+
+    MÉTHODE get_all(self):
+        contenu ← liste vide
+
+        POUR CHAQUE item_id, quantite DANS self.items.items():
+            item ← self.item_catalog.get_item(item_id)
+
+            SI item EST NOT None:
+                ajouter (item, quantite) à contenu
+
+        RETOURNER contenu
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_by_category
+    # -----------------------------------------------------------------
+    #
+    # Renvoie les objets d'une catégorie donnée que le joueur possède.
+    # Renvoie une liste de tuples (objet Item, quantité).
+    #
+    # category : "heal", "pokeball", "boost", "revive", "status"
+    #
+    # Utilisé par state_combat.py pour afficher seulement les objets
+    # utilisables en combat, triés par catégorie.
+    # Utilisé par state_inventory.py pour les onglets du sac.
+
+    MÉTHODE get_by_category(self, category):
+        resultats ← liste vide
+
+        POUR CHAQUE item_id, quantite DANS self.items.items():
+            item ← self.item_catalog.get_item(item_id)
+
+            SI item EST NOT None ET item.category == category:
+                ajouter (item, quantite) à resultats
+
+        RETOURNER resultats
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_usable_in_combat
+    # -----------------------------------------------------------------
+    #
+    # Renvoie tous les objets utilisables en combat que le joueur possède.
+    # Filtre sur le flag usable_in_combat de chaque Item.
+    #
+    # Renvoie une liste de tuples (objet Item, quantité).
+    #
+    # Utilisé par state_combat.py quand le joueur ouvre son sac
+    # pendant un combat. On lui montre que les objets pertinents
+    # (pas les anti-statut si on a pas implémenté les statuts, etc.).
+
+    MÉTHODE get_usable_in_combat(self):
+        resultats ← liste vide
+
+        POUR CHAQUE item_id, quantite DANS self.items.items():
+            item ← self.item_catalog.get_item(item_id)
+
+            SI item EST NOT None ET item.usable_in_combat:
+                ajouter (item, quantite) à resultats
+
+        RETOURNER resultats
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_usable_outside_combat
+    # -----------------------------------------------------------------
+    #
+    # Pareil mais pour hors combat.
+    # Les Pokéballs et boosts apparaissent pas ici.
+    #
+    # Utilisé par state_inventory.py en exploration.
+
+    MÉTHODE get_usable_outside_combat(self):
+        resultats ← liste vide
+
+        POUR CHAQUE item_id, quantite DANS self.items.items():
+            item ← self.item_catalog.get_item(item_id)
+
+            SI item EST NOT None ET item.usable_outside_combat:
+                ajouter (item, quantite) à resultats
+
+        RETOURNER resultats
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : has_pokeballs
+    # -----------------------------------------------------------------
+    #
+    # Renvoie True si le joueur possède au moins une Pokéball
+    # (n'importe quel type : Pokéball, Super Ball, Hyper Ball, Master Ball).
+    #
+    # Utilisé par state_combat.py pour savoir si le bouton "Sac"
+    # doit afficher l'option de capture ou pas.
+    # Utilisé par combat.py pour vérifier avant de tenter une capture.
+
+    MÉTHODE has_pokeballs(self):
+        POUR CHAQUE item_id, quantite DANS self.items.items():
+            item ← self.item_catalog.get_item(item_id)
+
+            SI item EST NOT None ET item.est_pokeball ET quantite > 0:
+                RETOURNER True
+
+        RETOURNER False
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : to_dict
+    # -----------------------------------------------------------------
+    #
+    # Convertit l'inventaire en dictionnaire pour la sauvegarde JSON.
+    #
+    # On sauvegarde juste les ids et les quantités. Pas les noms,
+    # pas les descriptions, pas les effets. Tout ça sera rechargé
+    # depuis le catalogue au moment du chargement.
+    #
+    # Format : {"items": {item_id: quantite, ...}}
+    #
+    # Les clés JSON doivent être des strings, donc on convertit
+    # les ids en strings.
+
+    MÉTHODE to_dict(self):
+        items_str ← dictionnaire vide
+        POUR CHAQUE item_id, quantite DANS self.items.items():
+            items_str[str(item_id)] ← quantite
+
+        RETOURNER {"items": items_str}
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE DE CLASSE : from_dict
+    # -----------------------------------------------------------------
+    #
+    # Recrée un inventaire à partir d'un dictionnaire de sauvegarde.
+    # C'est l'inverse de to_dict().
+    #
+    # data : le dictionnaire {"items": {"1": 3, "4": 5, ...}}
+    # item_catalog : le catalogue pour valider les ids
+    #
+    # On reconvertit les clés strings en int (les ids sont des int
+    # dans le code, mais JSON les transforme en strings).
+
+    MÉTHODE DE CLASSE from_dict(cls, data, item_catalog):
+        inventaire ← cls(item_catalog)
+
+        items_data ← data.get("items", {})
+        POUR CHAQUE item_id_str, quantite DANS items_data.items():
+            ESSAYER:
+                item_id ← int(item_id_str)
+
+                # Vérifier que l'objet existe toujours dans le catalogue
+                SI item_catalog.get_item(item_id) EST NOT None:
+                    inventaire.items[item_id] ← quantite
+                SINON:
+                    afficher warning ("Item {} de la sauvegarde n'existe plus dans le catalogue".format(item_id))
+
+            EN CAS D'ERREUR:
+                afficher warning ("Id d'item invalide dans la sauvegarde : " + item_id_str)
+
+        RETOURNER inventaire
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE SPÉCIALE : __len__
+    # -----------------------------------------------------------------
+    #
+    # Renvoie le nombre de types d'objets différents dans l'inventaire.
+    # Pas le nombre total (pour ça y'a nombre_total).
+    # Exemple : 3 potions + 5 pokéballs = len() renvoie 2 (pas 8).
+
+    MÉTHODE __len__(self):
+        RETOURNER len(self.items)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE SPÉCIALE : __str__
+    # -----------------------------------------------------------------
+    #
+    # Affichage debug.
+    # Exemple : "Inventaire (3 types, 9 objets) : Potion ×3, Pokéball ×5, Rappel ×1"
+
+    MÉTHODE __str__(self):
+        SI self.est_vide:
+            RETOURNER "Inventaire (vide)"
+
+        descriptions ← liste vide
+        POUR CHAQUE item_id, quantite DANS self.items.items():
+            item ← self.item_catalog.get_item(item_id)
+            SI item EST NOT None:
+                ajouter "{} ×{}".format(item.name, quantite) à descriptions
+
+        RETOURNER "Inventaire ({} types, {} objets) : {}".format(
+            len(self.items), self.nombre_total, ", ".join(descriptions)
+        )
