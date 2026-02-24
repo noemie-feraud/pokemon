@@ -1,0 +1,325 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+#
+# json : pour charger le catalogue depuis items.json
+# settings : pour le chemin vers items.json
+
+importer json
+importer FICHIER_ITEMS depuis config.settings
+
+
+# =============================================================================
+# CLASSE ITEM
+# =============================================================================
+#
+# Représente un objet du jeu avec toutes ses propriétés.
+# C'est un modèle de données léger (data class).
+# La logique d'utilisation est dans les systèmes qui consomment les items.
+
+CLASSE Item:
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+    #
+    # data : dictionnaire venant de items.json.
+    #
+    # Chaque objet a :
+    #   - un id unique (pour le référencer dans l'inventaire)
+    #   - un nom (affiché au joueur)
+    #   - une description (affichée dans l'inventaire et la boutique)
+    #   - une catégorie ("heal", "pokeball", "boost", "revive", "status")
+    #   - un effet (la valeur numérique : PV restaurés, % de capture, % de boost)
+    #   - un prix en crédits (0 si non achetable)
+    #   - des flags d'utilisation (combat / hors combat)
+
+    MÉTHODE __init__(self, data):
+
+        # --- IDENTITÉ ---
+        self.id ← data["id"]
+        self.name ← data["name"]
+        self.description ← data.get("description", "")
+
+        # --- CATÉGORIE ---
+        # Détermine comment l'objet est utilisé.
+        # "heal" → restaure des PV
+        # "pokeball" → tente une capture
+        # "boost" → augmente une stat temporairement
+        # "revive" → réanime un Pokémon KO
+        # "status" → retire un statut négatif
+        self.category ← data["category"]
+
+        # --- EFFET ---
+        # La valeur numérique de l'effet. Son sens dépend de la catégorie :
+        #   heal → nombre de PV restaurés (20, 50, 120)
+        #   pokeball → taux de capture en pourcentage (30, 60, 80, 100)
+        #   boost → pourcentage de boost (25 → +25%)
+        #   revive → pourcentage de PV max restaurés (50 → 50% des PV max)
+        #   status → pas de valeur numérique (on met 0)
+        self.effect_value ← data.get("effect_value", 0)
+
+        # --- STAT CIBLÉE (pour les boosts) ---
+        # Quelle stat est boostée : "attack" ou "defense"
+        # None pour les objets qui sont pas des boosts.
+        self.target_stat ← data.get("target_stat", None)
+
+        # --- PRIX ---
+        # En crédits. 0 = non achetable (objet de quête, Master Ball).
+        self.price ← data.get("price", 0)
+
+        # --- CONTEXTE D'UTILISATION ---
+        # Où est-ce que l'objet peut être utilisé ?
+        # Les Pokéballs et boosts c'est combat only.
+        # Les potions et rappels c'est les deux.
+        # L'anti-statut c'est les deux aussi.
+        self.usable_in_combat ← data.get("usable_in_combat", True)
+        self.usable_outside_combat ← data.get("usable_outside_combat", True)
+
+        # --- ACHETABLE ---
+        # Est-ce que l'objet apparaît dans la boutique ?
+        # La Master Ball est pas achetable (récompense de quête).
+        self.buyable ← data.get("buyable", True)
+
+
+    # -----------------------------------------------------------------
+    # PROPRIÉTÉ : est_soin
+    # -----------------------------------------------------------------
+    #
+    # Renvoie True si l'objet est un soin (potion).
+    # Utilisé par l'inventaire pour filtrer les objets utilisables
+    # sur un Pokémon blessé.
+
+    PROPRIÉTÉ est_soin:
+        RETOURNER self.category == "heal"
+
+
+    # -----------------------------------------------------------------
+    # PROPRIÉTÉ : est_pokeball
+    # -----------------------------------------------------------------
+    #
+    # Renvoie True si l'objet est une Pokéball.
+    # Utilisé par combat.py pour savoir si le joueur tente une capture.
+
+    PROPRIÉTÉ est_pokeball:
+        RETOURNER self.category == "pokeball"
+
+
+    # -----------------------------------------------------------------
+    # PROPRIÉTÉ : est_boost
+    # -----------------------------------------------------------------
+    #
+    # Renvoie True si l'objet est un boost de stat.
+
+    PROPRIÉTÉ est_boost:
+        RETOURNER self.category == "boost"
+
+
+    # -----------------------------------------------------------------
+    # PROPRIÉTÉ : est_rappel
+    # -----------------------------------------------------------------
+    #
+    # Renvoie True si l'objet est un rappel (réanime un KO).
+
+    PROPRIÉTÉ est_rappel:
+        RETOURNER self.category == "revive"
+
+
+    # -----------------------------------------------------------------
+    # PROPRIÉTÉ : est_anti_statut
+    # -----------------------------------------------------------------
+    #
+    # Renvoie True si l'objet retire un statut négatif.
+
+    PROPRIÉTÉ est_anti_statut:
+        RETOURNER self.category == "status"
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_description_formatee
+    # -----------------------------------------------------------------
+    #
+    # Renvoie une description lisible pour l'affichage en jeu.
+    # Ajoute les détails de l'effet à la description de base.
+    #
+    # Exemples :
+    #   "Potion — Restaure 20 PV (25 crédits)"
+    #   "Super Ball — 60% de chance de capture (50 crédits)"
+    #   "Boost Attaque — +25% attaque en combat (40 crédits)"
+    #
+    # Utilisé par state_inventory.py et state_shop.py pour l'affichage.
+
+    MÉTHODE get_description_formatee(self):
+        SI self.est_soin:
+            effet_str ← "Restaure {} PV".format(self.effect_value)
+
+        SINON SI self.est_pokeball:
+            effet_str ← "{}% de chance de capture".format(self.effect_value)
+
+        SINON SI self.est_boost:
+            effet_str ← "+{}% {}".format(self.effect_value, self.target_stat)
+
+        SINON SI self.est_rappel:
+            effet_str ← "Réanime à {}% des PV max".format(self.effect_value)
+
+        SINON SI self.est_anti_statut:
+            effet_str ← "Retire les statuts négatifs"
+
+        SINON:
+            effet_str ← self.description
+
+        SI self.price > 0:
+            RETOURNER "{} — {} ({} crédits)".format(self.name, effet_str, self.price)
+        SINON:
+            RETOURNER "{} — {}".format(self.name, effet_str)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : to_dict
+    # -----------------------------------------------------------------
+    #
+    # Sérialisation. Pas vraiment utilisé pour la sauvegarde (on
+    # sauvegarde juste les ids + quantités dans l'inventaire), mais
+    # utile pour le debug.
+
+    MÉTHODE to_dict(self):
+        RETOURNER {
+            "id": self.id,
+            "name": self.name,
+            "description": self.description,
+            "category": self.category,
+            "effect_value": self.effect_value,
+            "target_stat": self.target_stat,
+            "price": self.price,
+            "usable_in_combat": self.usable_in_combat,
+            "usable_outside_combat": self.usable_outside_combat,
+            "buyable": self.buyable
+        }
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE SPÉCIALE : __str__
+    # -----------------------------------------------------------------
+    #
+    # Affichage debug.
+    # Exemple : "Potion (heal) — 20 PV — 25 crédits"
+
+    MÉTHODE __str__(self):
+        RETOURNER "{} ({}) — effet: {} — {} crédits".format(
+            self.name, self.category, self.effect_value, self.price
+        )
+
+
+# =============================================================================
+# CLASSE ITEM CATALOG
+# =============================================================================
+#
+# Charge et stocke tous les objets du jeu depuis items.json.
+# C'est un singleton en pratique : on le crée une fois au démarrage
+# et tout le monde y accède.
+#
+# Pourquoi une classe séparée ? Parce que le chargement du JSON
+# et l'indexation des objets par id c'est pas la responsabilité
+# d'un objet Item individuel. Le catalogue gère la collection,
+# chaque Item gère ses propres données.
+
+CLASSE ItemCatalog:
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+    #
+    # Charge items.json et crée une instance de Item pour chaque entrée.
+    # Stocke les items dans un dictionnaire indexé par id pour un
+    # accès rapide.
+    #
+    # Si le fichier est pas trouvé ou corrompu, le catalogue est vide.
+    # Le jeu plantera pas, le joueur aura juste aucun objet disponible.
+
+    MÉTHODE __init__(self):
+        self.items ← dictionnaire vide
+
+        ESSAYER:
+            ouvrir FICHIER_ITEMS en lecture
+            items_data ← json.load(fichier)
+
+            POUR CHAQUE item_data DANS items_data:
+                item ← Item(item_data)
+                self.items[item.id] ← item
+
+        EN CAS D'ERREUR:
+            afficher warning ("Impossible de charger le catalogue d'items")
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_item
+    # -----------------------------------------------------------------
+    #
+    # Renvoie un objet Item par son id.
+    # Renvoie None si l'id existe pas.
+    #
+    # Utilisé par tout le monde : inventaire, boutique, combat...
+
+    MÉTHODE get_item(self, item_id):
+        RETOURNER self.items.get(item_id, None)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_buyable_items
+    # -----------------------------------------------------------------
+    #
+    # Renvoie la liste des objets achetables en boutique.
+    # Filtre sur le flag buyable ET sur un prix > 0.
+    #
+    # Utilisé par shop.py pour construire le catalogue de la boutique.
+
+    MÉTHODE get_buyable_items(self):
+        achetables ← liste vide
+        POUR CHAQUE item DANS self.items.values():
+            SI item.buyable ET item.price > 0:
+                ajouter item à achetables
+        RETOURNER achetables
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_items_by_category
+    # -----------------------------------------------------------------
+    #
+    # Renvoie tous les objets d'une catégorie donnée.
+    # Utilisé par l'interface de l'inventaire pour trier par onglets.
+    #
+    # category : "heal", "pokeball", "boost", "revive", "status"
+
+    MÉTHODE get_items_by_category(self, category):
+        resultats ← liste vide
+        POUR CHAQUE item DANS self.items.values():
+            SI item.category == category:
+                ajouter item à resultats
+        RETOURNER resultats
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_all
+    # -----------------------------------------------------------------
+    #
+    # Renvoie la liste de tous les objets du catalogue.
+    # Utilisé pour le debug et l'affichage complet.
+
+    MÉTHODE get_all(self):
+        RETOURNER liste de self.items.values()
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE SPÉCIALE : __len__
+    # -----------------------------------------------------------------
+
+    MÉTHODE __len__(self):
+        RETOURNER len(self.items)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE SPÉCIALE : __str__
+    # -----------------------------------------------------------------
+
+    MÉTHODE __str__(self):
+        RETOURNER "Catalogue ({} objets)".format(len(self.items))
