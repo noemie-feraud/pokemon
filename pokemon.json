@@ -1,0 +1,461 @@
+[
+    {
+        "id": 1,
+        "nom": "Bulbasaur",
+        "type": "Grass",
+        "pv": 45,
+        "attaque": 49,
+        "defense": 49,
+        "chemin_image": "sprites_pokemon/Bulbasaur.png"
+    },
+    {
+        "id": 2,
+        "nom": "Ivysaur",
+        "type": "Grass",
+        "pv": 60,
+        "attaque": 62,
+        "defense": 63,
+        "chemin_image": "sprites_pokemon/Ivysaur.png"
+    },
+    {
+        "id": 3,
+        "nom": "Venusaur",
+        "type": "Grass",
+        "pv": 80,
+        "attaque": 82,
+        "defense": 83,
+        "chemin_image": "sprites_pokemon/Venusaur.png"
+    },
+    {
+        "id": 4,
+        "nom": "Charmander",
+        "type": "Fire",
+        "pv": 39,
+        "attaque": 52,
+        "defense": 43,
+        "chemin_image": "sprites_pokemon/Charmander.png"
+    },
+    {
+        "id": 5,
+        "nom": "Charmeleon",
+        "type": "Fire",
+        "pv": 58,
+        "attaque": 64,
+        "defense": 58,
+        "chemin_image": "sprites_pokemon/Charmeleon.png"
+    },
+    {
+        "id": 6,
+        "nom": "Charizard",
+        "type": "Fire",
+        "pv": 78,
+        "attaque": 84,
+        "defense": 78,
+        "chemin_image": "sprites_pokemon/Charizard.png"
+    },
+    {
+        "id": 7,
+        "nom": "Squirtle",
+        "type": "Water",
+        "pv": 44,
+        "attaque": 48,
+        "defense": 65,
+        "chemin_image": "sprites_pokemon/Squirtle.png"
+    },
+    {
+        "id": 8,
+        "nom": "Wartortle",
+        "type": "Water",
+        "pv": 59,
+        "attaque": 63,
+        "defense": 80,
+        "chemin_image": "sprites_pokemon/Wartortle.png"
+    },
+    {
+        "id": 9,
+        "nom": "Blastoise",
+        "type": "Water",
+        "pv": 79,
+        "attaque": 83,
+        "defense": 100,
+        "chemin_image": "sprites_pokemon/Blastoise.png"
+    },
+    {
+        "id": 10,
+        "nom": "Caterpie",
+        "type": "Bug",
+        "pv": 45,
+        "attaque": 30,
+        "defense": 35,
+        "chemin_image": "sprites_pokemon/Caterpie.png"
+    },
+    {
+        "id": 11,
+        "nom": "Metapod",
+        "type": "Bug",
+        "pv": 50,
+        "attaque": 20,
+        "defense": 55,
+        "chemin_image": "sprites_pokemon/Metapod.png"
+    },
+    {
+        "id": 12,
+        "nom": "Butterfree",
+        "type": "Bug",
+        "pv": 60,
+        "attaque": 45,
+        "defense": 50,
+        "chemin_image": "sprites_pokemon/Butterfree.png"
+    },
+    {
+        "id": 13,
+        "nom": "Weedle",
+        "type": "Bug",
+        "pv": 40,
+        "attaque": 35,
+        "defense": 30,
+        "chemin_image": "sprites_pokemon/Weedle.png"
+    },
+    {
+        "id": 14,
+        "nom": "Kakuna",
+        "type": "Bug",
+        "pv": 45,
+        "attaque": 25,
+        "defense": 50,
+        "chemin_image": "sprites_pokemon/Kakuna.png"
+    },
+    {
+        "id": 15,
+        "nom": "Beedrill",
+        "type": "Bug",
+        "pv": 65,
+        "attaque": 90,
+        "defense": 40,
+        "chemin_image": "sprites_pokemon/Beedrill.png"
+    },
+    {
+        "id": 16,
+        "nom": "Pidgey",
+        "type": "Normal",
+        "pv": 40,
+        "attaque": 45,
+        "defense": 40,
+        "chemin_image": "sprites_pokemon/Pidgey.png"
+    },
+    {
+        "id": 17,
+        "nom": "Pidgeotto",
+        "type": "Normal",
+        "pv": 63,
+        "attaque": 60,
+        "defense": 55,
+        "chemin_image": "sprites_pokemon/Pidgeotto.png"
+    },
+    {
+        "id": 18,
+        "nom": "Pidgeot",
+        "type": "Normal",
+        "pv": 83,
+        "attaque": 80,
+        "defense": 75,
+        "chemin_image": "sprites_pokemon/Pidgeot.png"
+    },
+    {
+        "id": 29,
+        "nom": "Nidoran-f",
+        "type": "Poison",
+        "pv": 55,
+        "attaque": 47,
+        "defense": 52,
+        "chemin_image": "sprites_pokemon/Nidoran-f.png"
+    },
+    {
+        "id": 30,
+        "nom": "Nidorina",
+        "type": "Poison",
+        "pv": 70,
+        "attaque": 62,
+        "defense": 67,
+        "chemin_image": "sprites_pokemon/Nidorina.png"
+    },
+    {
+        "id": 31,
+        "nom": "Nidoqueen",
+        "type": "Poison",
+        "pv": 90,
+        "attaque": 92,
+        "defense": 87,
+        "chemin_image": "sprites_pokemon/Nidoqueen.png"
+    },
+    {
+        "id": 32,
+        "nom": "Nidoran-m",
+        "type": "Poison",
+        "pv": 46,
+        "attaque": 57,
+        "defense": 40,
+        "chemin_image": "sprites_pokemon/Nidoran-m.png"
+    },
+    {
+        "id": 33,
+        "nom": "Nidorino",
+        "type": "Poison",
+        "pv": 61,
+        "attaque": 72,
+        "defense": 57,
+        "chemin_image": "sprites_pokemon/Nidorino.png"
+    },
+    {
+        "id": 34,
+        "nom": "Nidoking",
+        "type": "Poison",
+        "pv": 81,
+        "attaque": 102,
+        "defense": 77,
+        "chemin_image": "sprites_pokemon/Nidoking.png"
+    },
+    {
+        "id": 60,
+        "nom": "Poliwag",
+        "type": "Water",
+        "pv": 40,
+        "attaque": 50,
+        "defense": 40,
+        "chemin_image": "sprites_pokemon/Poliwag.png"
+    },
+    {
+        "id": 61,
+        "nom": "Poliwhirl",
+        "type": "Water",
+        "pv": 65,
+        "attaque": 65,
+        "defense": 65,
+        "chemin_image": "sprites_pokemon/Poliwhirl.png"
+    },
+    {
+        "id": 62,
+        "nom": "Poliwrath",
+        "type": "Water",
+        "pv": 90,
+        "attaque": 95,
+        "defense": 95,
+        "chemin_image": "sprites_pokemon/Poliwrath.png"
+    },
+    {
+        "id": 63,
+        "nom": "Abra",
+        "type": "Psychic",
+        "pv": 25,
+        "attaque": 20,
+        "defense": 15,
+        "chemin_image": "sprites_pokemon/Abra.png"
+    },
+    {
+        "id": 64,
+        "nom": "Kadabra",
+        "type": "Psychic",
+        "pv": 40,
+        "attaque": 35,
+        "defense": 30,
+        "chemin_image": "sprites_pokemon/Kadabra.png"
+    },
+    {
+        "id": 65,
+        "nom": "Alakazam",
+        "type": "Psychic",
+        "pv": 55,
+        "attaque": 50,
+        "defense": 45,
+        "chemin_image": "sprites_pokemon/Alakazam.png"
+    },
+    {
+        "id": 66,
+        "nom": "Machop",
+        "type": "Fighting",
+        "pv": 70,
+        "attaque": 80,
+        "defense": 50,
+        "chemin_image": "sprites_pokemon/Machop.png"
+    },
+    {
+        "id": 67,
+        "nom": "Machoke",
+        "type": "Fighting",
+        "pv": 80,
+        "attaque": 100,
+        "defense": 70,
+        "chemin_image": "sprites_pokemon/Machoke.png"
+    },
+    {
+        "id": 68,
+        "nom": "Machamp",
+        "type": "Fighting",
+        "pv": 90,
+        "attaque": 130,
+        "defense": 80,
+        "chemin_image": "sprites_pokemon/Machamp.png"
+    },
+    {
+        "id": 69,
+        "nom": "Bellsprout",
+        "type": "Grass",
+        "pv": 50,
+        "attaque": 75,
+        "defense": 35,
+        "chemin_image": "sprites_pokemon/Bellsprout.png"
+    },
+    {
+        "id": 70,
+        "nom": "Weepinbell",
+        "type": "Grass",
+        "pv": 65,
+        "attaque": 90,
+        "defense": 50,
+        "chemin_image": "sprites_pokemon/Weepinbell.png"
+    },
+    {
+        "id": 71,
+        "nom": "Victreebel",
+        "type": "Grass",
+        "pv": 80,
+        "attaque": 105,
+        "defense": 65,
+        "chemin_image": "sprites_pokemon/Victreebel.png"
+    },
+    {
+        "id": 74,
+        "nom": "Geodude",
+        "type": "Rock",
+        "pv": 40,
+        "attaque": 80,
+        "defense": 100,
+        "chemin_image": "sprites_pokemon/Geodude.png"
+    },
+    {
+        "id": 75,
+        "nom": "Graveler",
+        "type": "Rock",
+        "pv": 55,
+        "attaque": 95,
+        "defense": 115,
+        "chemin_image": "sprites_pokemon/Graveler.png"
+    },
+    {
+        "id": 76,
+        "nom": "Golem",
+        "type": "Rock",
+        "pv": 80,
+        "attaque": 120,
+        "defense": 130,
+        "chemin_image": "sprites_pokemon/Golem.png"
+    },
+    {
+        "id": 92,
+        "nom": "Gastly",
+        "type": "Ghost",
+        "pv": 30,
+        "attaque": 35,
+        "defense": 30,
+        "chemin_image": "sprites_pokemon/Gastly.png"
+    },
+    {
+        "id": 93,
+        "nom": "Haunter",
+        "type": "Ghost",
+        "pv": 45,
+        "attaque": 50,
+        "defense": 45,
+        "chemin_image": "sprites_pokemon/Haunter.png"
+    },
+    {
+        "id": 94,
+        "nom": "Gengar",
+        "type": "Ghost",
+        "pv": 60,
+        "attaque": 65,
+        "defense": 60,
+        "chemin_image": "sprites_pokemon/Gengar.png"
+    },
+    {
+        "id": 147,
+        "nom": "Dratini",
+        "type": "Dragon",
+        "pv": 41,
+        "attaque": 64,
+        "defense": 45,
+        "chemin_image": "sprites_pokemon/Dratini.png"
+    },
+    {
+        "id": 148,
+        "nom": "Dragonair",
+        "type": "Dragon",
+        "pv": 61,
+        "attaque": 84,
+        "defense": 65,
+        "chemin_image": "sprites_pokemon/Dragonair.png"
+    },
+    {
+        "id": 149,
+        "nom": "Dragonite",
+        "type": "Dragon",
+        "pv": 91,
+        "attaque": 134,
+        "defense": 95,
+        "chemin_image": "sprites_pokemon/Dragonite.png"
+    },
+    {
+        "id": 155,
+        "nom": "Cyndaquil",
+        "type": "Fire",
+        "pv": 39,
+        "attaque": 52,
+        "defense": 43,
+        "chemin_image": "sprites_pokemon/Cyndaquil.png"
+    },
+    {
+        "id": 156,
+        "nom": "Quilava",
+        "type": "Fire",
+        "pv": 58,
+        "attaque": 64,
+        "defense": 58,
+        "chemin_image": "sprites_pokemon/Quilava.png"
+    },
+    {
+        "id": 157,
+        "nom": "Typhlosion",
+        "type": "Fire",
+        "pv": 78,
+        "attaque": 84,
+        "defense": 78,
+        "chemin_image": "sprites_pokemon/Typhlosion.png"
+    },
+    {
+        "id": 158,
+        "nom": "Totodile",
+        "type": "Water",
+        "pv": 50,
+        "attaque": 65,
+        "defense": 64,
+        "chemin_image": "sprites_pokemon/Totodile.png"
+    },
+    {
+        "id": 159,
+        "nom": "Croconaw",
+        "type": "Water",
+        "pv": 65,
+        "attaque": 80,
+        "defense": 80,
+        "chemin_image": "sprites_pokemon/Croconaw.png"
+    },
+    {
+        "id": 160,
+        "nom": "Feraligatr",
+        "type": "Water",
+        "pv": 85,
+        "attaque": 105,
+        "defense": 100,
+        "chemin_image": "sprites_pokemon/Feraligatr.png"
+    }
+]
