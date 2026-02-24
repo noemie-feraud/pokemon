@@ -1,0 +1,76 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+#
+# NPC : la classe mère
+# random : pour piocher un dialogue au hasard
+
+importer NPC depuis entities.npc
+importer random
+
+
+# =============================================================================
+# CLASSE NPC AMBIENT
+# =============================================================================
+#
+# PNJ d'ambiance. Donne vie au monde avec des dialogues humoristiques.
+# Hérite de NPC. Redéfinit seulement get_dialogue().
+# Tout le reste (position, sprite, interaction, draw, on_dialogue_end)
+# est hérité tel quel de NPC.
+
+CLASSE NPCAmbient (hérite de NPC):
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+    #
+    # On appelle le constructeur de NPC avec les données du JSON.
+    # Pas d'attribut supplémentaire. La seule différence avec NPC
+    # c'est le comportement de get_dialogue().
+    #
+    # data : dictionnaire venant de npcs.json
+
+    MÉTHODE __init__(self, data):
+        super().__init__(data)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_dialogue (redéfinition)
+    # -----------------------------------------------------------------
+    #
+    # Choisit le dialogue à afficher quand le joueur interagit.
+    #
+    # Deux modes :
+    #
+    # MODE ALÉATOIRE (clé "random" dans les dialogues) :
+    #   self.dialogues["random"] est une liste de dialogues.
+    #   Chaque dialogue est lui-même une liste de lignes.
+    #   On pioche un dialogue complet au hasard.
+    #
+    #   Exemple de structure :
+    #     "random": [
+    #         ["Ligne A1", "Ligne A2"],      ← dialogue A (2 lignes)
+    #         ["Ligne B1"],                   ← dialogue B (1 ligne)
+    #         ["Ligne C1", "Ligne C2", "C3"] ← dialogue C (3 lignes)
+    #     ]
+    #   → On pioche A, B ou C au hasard avec random.choice()
+    #
+    # MODE CLASSIQUE (clé "default" dans les dialogues) :
+    #   Comportement hérité de NPC : on renvoie toujours le même dialogue.
+    #   C'est le fallback si "random" n'existe pas dans le JSON.
+    #
+    # Renvoie une liste de strings (les lignes du dialogue choisi).
+    # C'est on_interact() (hérité de NPC) qui passe ces lignes au
+    # StateDialogue pour les afficher.
+
+    MÉTHODE get_dialogue(self):
+        # Mode aléatoire : si le JSON contient une clé "random"
+        SI "random" EST dans self.dialogues:
+            liste_dialogues ← self.dialogues["random"]
+
+            SI liste_dialogues N'EST PAS vide:
+                # Piocher un dialogue complet au hasard
+                RETOURNER random.choice(liste_dialogues)
+
+        # Mode classique : dialogue fixe (hérité de NPC)
+        RETOURNER self.dialogues.get("default", ["..."])
