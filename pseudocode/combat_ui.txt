@@ -1,0 +1,820 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+#
+# pygame : pour tout le rendu graphique
+# settings : dimensions, couleurs, chemins des sprites
+
+importer pygame
+importer (SCREEN_WIDTH, SCREEN_HEIGHT, TILE_SIZE,
+         COULEUR_PV_VERT, COULEUR_PV_JAUNE, COULEUR_PV_ROUGE,
+         COULEUR_DIALOGUE_FOND, COULEUR_DIALOGUE_BORDURE,
+         COULEUR_DIALOGUE_TEXTE) depuis config.settings
+
+
+# =============================================================================
+# CONSTANTES LOCALES
+# =============================================================================
+
+# Modes d'affichage de la zone basse
+MODE_MENU ← "menu"
+MODE_ATTAQUES ← "attaques"
+MODE_SAC ← "sac"
+MODE_POKEMON ← "pokemon"
+MODE_MESSAGE ← "message"
+MODE_REMPLACEMENT ← "remplacement"
+
+# Positions des sprites
+SPRITE_ADVERSE_X ← SCREEN_WIDTH - 200
+SPRITE_ADVERSE_Y ← 80
+SPRITE_JOUEUR_X ← 100
+SPRITE_JOUEUR_Y ← 250
+
+# Dimensions des barres de PV
+BARRE_PV_LARGEUR ← 150
+BARRE_PV_HAUTEUR ← 12
+
+# Zone basse (menu / messages)
+ZONE_BASSE_Y ← SCREEN_HEIGHT - 150
+ZONE_BASSE_HAUTEUR ← 150
+
+# Animation
+DUREE_FLASH_DEGATS ← 0.4      # secondes de clignotement
+DUREE_BARRE_PV ← 0.5           # secondes pour la transition de barre
+DUREE_ANIMATION_KO ← 0.5       # secondes pour l'animation de KO
+
+
+# =============================================================================
+# CLASSE COMBAT UI
+# =============================================================================
+
+CLASSE CombatUI:
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+    #
+    # game_manager : pour accéder à l'audio et aux ressources
+    #
+    # On initialise les polices, les sprites, le mode d'affichage,
+    # le curseur, et les variables d'animation.
+
+    MÉTHODE __init__(self, game_manager):
+        self.game_manager ← game_manager
+
+        # --- POLICES ---
+        self.font_nom ← pygame.font.Font(None, 28)
+        self.font_pv ← pygame.font.Font(None, 22)
+        self.font_menu ← pygame.font.Font(None, 26)
+        self.font_message ← pygame.font.Font(None, 24)
+
+        # --- MODE D'AFFICHAGE ---
+        self.mode ← MODE_MENU
+        self.selection_index ← 0
+
+        # --- SPRITES DES POKÉMON ---
+        # Chargés dynamiquement quand on met à jour l'état
+        self.sprite_joueur ← None
+        self.sprite_adverse ← None
+
+        # --- BARRES DE PV (animation) ---
+        # Les PV affichés = les PV cibles (du Pokémon).
+        # Quand les PV changent, pv_affiche_* glisse progressivement
+        # vers la nouvelle valeur.
+        self.pv_affiche_joueur ← 0
+        self.pv_affiche_adverse ← 0
+        self.pv_cible_joueur ← 0
+        self.pv_cible_adverse ← 0
+
+        # --- ANIMATIONS ---
+        self.animation_active ← False
+        self.animation_type ← None      # "flash_degats", "ko", "capture"
+        self.animation_timer ← 0
+        self.animation_cible ← None     # "joueur" ou "adverse"
+
+        # --- FILE D'ÉVÉNEMENTS ---
+        self.evenements_en_attente ← liste vide
+        self.evenement_actuel ← None
+        self.message_actuel ← ""
+
+        # --- DONNÉES DU COMBAT ---
+        # Mises à jour à chaque frame par state_combat.py
+        self.etat_combat ← None
+
+        # --- OPTIONS DU MENU ---
+        self.options_menu ← ["Attaquer", "Sac", "Pokémon", "Fuir"]
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : set_etat
+    # -----------------------------------------------------------------
+    #
+    # Met à jour les données du combat depuis le moteur.
+    # Appelée à chaque frame par state_combat.py.
+    #
+    # etat : le dictionnaire renvoyé par combat.get_etat()
+    #
+    # On met à jour les PV cibles pour que les barres animent
+    # vers les nouvelles valeurs.
+
+    MÉTHODE set_etat(self, etat):
+        self.etat_combat ← etat
+
+        # Mettre à jour les PV cibles
+        SI etat["pokemon_joueur"] EST NOT None:
+            self.pv_cible_joueur ← etat["pokemon_joueur"].pv_actuels
+
+        SI etat["pokemon_adverse"] EST NOT None:
+            self.pv_cible_adverse ← etat["pokemon_adverse"].pv_actuels
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : charger_sprites
+    # -----------------------------------------------------------------
+    #
+    # Charge les sprites des deux Pokémon sur le terrain.
+    # Appelée au début du combat et à chaque switch.
+    #
+    # Le Pokémon du joueur est vu de dos (sprite_back).
+    # Le Pokémon adverse est vu de face (sprite_front).
+    #
+    # Si le fichier sprite n'existe pas, on crée un placeholder.
+
+    MÉTHODE charger_sprites(self, pokemon_joueur, pokemon_adverse):
+        # Sprite du joueur (dos)
+        ESSAYER:
+            SI pokemon_joueur.sprite_back ET fichier existe:
+                self.sprite_joueur ← pygame.image.load(pokemon_joueur.sprite_back).convert_alpha()
+            SINON:
+                self.sprite_joueur ← self._creer_placeholder((100, 100, 255))
+        EN CAS D'ERREUR:
+            self.sprite_joueur ← self._creer_placeholder((100, 100, 255))
+
+        # Sprite adverse (face)
+        ESSAYER:
+            SI pokemon_adverse.sprite_front ET fichier existe:
+                self.sprite_adverse ← pygame.image.load(pokemon_adverse.sprite_front).convert_alpha()
+            SINON:
+                self.sprite_adverse ← self._creer_placeholder((255, 100, 100))
+        EN CAS D'ERREUR:
+            self.sprite_adverse ← self._creer_placeholder((255, 100, 100))
+
+        # Initialiser les PV affichés
+        self.pv_affiche_joueur ← pokemon_joueur.pv_actuels
+        self.pv_affiche_adverse ← pokemon_adverse.pv_actuels
+        self.pv_cible_joueur ← pokemon_joueur.pv_actuels
+        self.pv_cible_adverse ← pokemon_adverse.pv_actuels
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _creer_placeholder
+    # -----------------------------------------------------------------
+
+    MÉTHODE _creer_placeholder(self, couleur):
+        surface ← pygame.Surface((64, 64))
+        surface.fill(couleur)
+        RETOURNER surface
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : set_evenements
+    # -----------------------------------------------------------------
+    #
+    # Reçoit la liste d'événements d'un tour de combat.
+    # Les stocke dans la file d'attente pour les afficher
+    # séquentiellement.
+    #
+    # evenements : la liste renvoyée par combat.executer_tour()
+
+    MÉTHODE set_evenements(self, evenements):
+        self.evenements_en_attente ← copie de evenements
+        self._consommer_prochain_evenement()
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _consommer_prochain_evenement
+    # -----------------------------------------------------------------
+    #
+    # Prend le prochain événement de la file et le prépare pour
+    # l'affichage.
+    #
+    # Selon le type d'événement, on :
+    #   - Change le message affiché
+    #   - Lance une animation
+    #   - Passe en mode MESSAGE
+    #
+    # Si la file est vide, on revient au mode MENU pour le prochain tour.
+
+    MÉTHODE _consommer_prochain_evenement(self):
+        SI self.evenements_en_attente EST vide:
+            # Plus d'événements → retour au menu
+            self.evenement_actuel ← None
+            self.mode ← MODE_MENU
+            self.selection_index ← 0
+            RETOURNER
+
+        self.evenement_actuel ← retirer le premier de self.evenements_en_attente
+        evt ← self.evenement_actuel
+
+        SI evt["type"] == "attaque":
+            nom_attaquant ← evt["attaquant"].nom
+            nom_attaque ← evt["attaque_nom"]
+            self.message_actuel ← "{} utilise {} !".format(nom_attaquant, nom_attaque)
+            self.mode ← MODE_MESSAGE
+
+            # Lancer l'animation de dégâts si l'attaque a touché
+            SI evt["resultat"]["a_touche"] ET NOT evt["resultat"]["est_immune"]:
+                self._lancer_animation("flash_degats", evt["resultat"], evt["camp"])
+
+        SINON SI evt["type"] == "ko":
+            self.message_actuel ← "{} est KO !".format(evt["pokemon"].nom)
+            self.mode ← MODE_MESSAGE
+            self._lancer_animation("ko", None, evt["camp"])
+
+        SINON SI evt["type"] == "item_utilise":
+            item_nom ← evt["item"].name
+            SI evt["effet"] == "soin":
+                self.message_actuel ← "Vous utilisez {} !".format(item_nom)
+            SINON SI evt["effet"] == "boost":
+                self.message_actuel ← "{} augmente !".format(evt["stat"])
+            SINON SI evt["effet"] == "rappel":
+                self.message_actuel ← "{} est réanimé !".format(evt["cible"].nom)
+            SINON:
+                self.message_actuel ← "Vous utilisez {} !".format(item_nom)
+            self.mode ← MODE_MESSAGE
+
+        SINON SI evt["type"] == "capture":
+            SI evt["resultat"]["capture_reussie"]:
+                self.message_actuel ← "Gotcha ! {} a été capturé !".format(
+                    evt["resultat"]["pokemon_capture"].nom)
+            SINON:
+                SI evt["resultat"]["raison_echec"] == "combat_dresseur":
+                    self.message_actuel ← "On ne peut pas capturer le Pokémon d'un dresseur !"
+                SINON:
+                    self.message_actuel ← "Oh non ! Il s'est libéré !"
+            self.mode ← MODE_MESSAGE
+
+        SINON SI evt["type"] == "switch":
+            SI evt["camp"] == "joueur":
+                self.message_actuel ← "Go {} !".format(evt["nouveau"].nom)
+            SINON:
+                self.message_actuel ← "L'adversaire envoie {} !".format(evt["nouveau"].nom)
+            self.mode ← MODE_MESSAGE
+            # Recharger les sprites pour le nouveau Pokémon
+            self.charger_sprites(
+                self.etat_combat["pokemon_joueur"],
+                self.etat_combat["pokemon_adverse"]
+            )
+
+        SINON SI evt["type"] == "xp":
+            self.message_actuel ← "{} gagne {} XP !".format(
+                evt["pokemon"].nom, evt["xp_gagnee"])
+            self.mode ← MODE_MESSAGE
+
+        SINON SI evt["type"] == "level_up":
+            self.message_actuel ← "{} monte au niveau {} !".format(
+                evt["pokemon"].nom, evt["nouveau_niveau"])
+            self.mode ← MODE_MESSAGE
+
+        SINON SI evt["type"] == "evolution_possible":
+            self.message_actuel ← "{} peut évoluer !".format(evt["pokemon"].nom)
+            self.mode ← MODE_MESSAGE
+
+        SINON SI evt["type"] == "fuite":
+            self.message_actuel ← evt["message"]
+            self.mode ← MODE_MESSAGE
+
+        SINON SI evt["type"] == "fuite_impossible":
+            self.message_actuel ← evt["message"]
+            self.mode ← MODE_MESSAGE
+
+        SINON SI evt["type"] == "choix_remplacement":
+            self.message_actuel ← "Choisissez un Pokémon !"
+            self.mode ← MODE_REMPLACEMENT
+            self.selection_index ← 0
+
+        SINON SI evt["type"] == "fin_combat":
+            SI evt["resultat"] == "victoire":
+                self.message_actuel ← "Vous avez gagné le combat !"
+            SINON:
+                self.message_actuel ← "Vous avez perdu le combat..."
+            self.mode ← MODE_MESSAGE
+
+        SINON:
+            # Événement inconnu, on skip
+            self._consommer_prochain_evenement()
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _lancer_animation
+    # -----------------------------------------------------------------
+    #
+    # Lance une animation visuelle.
+    # L'animation tourne en parallèle de l'affichage du message.
+
+    MÉTHODE _lancer_animation(self, type_anim, donnees, camp):
+        self.animation_active ← True
+        self.animation_type ← type_anim
+        self.animation_timer ← 0
+        self.animation_cible ← camp
+        self.animation_donnees ← donnees
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : update
+    # -----------------------------------------------------------------
+    #
+    # Met à jour les animations et les barres de PV.
+    # Appelée à chaque frame.
+
+    MÉTHODE update(self, dt):
+        # --- ANIMATION DES BARRES DE PV ---
+        # Les PV affichés glissent vers les PV cibles
+        vitesse_barre ← 100    # PV par seconde
+
+        SI self.pv_affiche_joueur != self.pv_cible_joueur:
+            SI self.pv_affiche_joueur > self.pv_cible_joueur:
+                self.pv_affiche_joueur ← max(
+                    self.pv_cible_joueur,
+                    self.pv_affiche_joueur - vitesse_barre × dt
+                )
+            SINON:
+                self.pv_affiche_joueur ← min(
+                    self.pv_cible_joueur,
+                    self.pv_affiche_joueur + vitesse_barre × dt
+                )
+
+        SI self.pv_affiche_adverse != self.pv_cible_adverse:
+            SI self.pv_affiche_adverse > self.pv_cible_adverse:
+                self.pv_affiche_adverse ← max(
+                    self.pv_cible_adverse,
+                    self.pv_affiche_adverse - vitesse_barre × dt
+                )
+            SINON:
+                self.pv_affiche_adverse ← min(
+                    self.pv_cible_adverse,
+                    self.pv_affiche_adverse + vitesse_barre × dt
+                )
+
+        # --- ANIMATION EN COURS ---
+        SI self.animation_active:
+            self.animation_timer ← self.animation_timer + dt
+
+            SI self.animation_type == "flash_degats":
+                SI self.animation_timer >= DUREE_FLASH_DEGATS:
+                    self.animation_active ← False
+
+            SI self.animation_type == "ko":
+                SI self.animation_timer >= DUREE_ANIMATION_KO:
+                    self.animation_active ← False
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : handle_input
+    # -----------------------------------------------------------------
+    #
+    # Gère l'input du joueur selon le mode actuel.
+    # Appelée par state_combat.py quand un événement clavier arrive.
+    #
+    # event : l'événement pygame
+    #
+    # Renvoie un dictionnaire décrivant l'action du joueur, ou None
+    # si rien n'a été choisi.
+    #
+    # Exemples de retour :
+    #   {"type": "attack", "attaque": {...}}
+    #   {"type": "item", "item": ..., "cible": ...}
+    #   {"type": "switch", "index": 2}
+    #   {"type": "flee"}
+    #   {"type": "avancer_message"}
+    #   None (le joueur a juste bougé le curseur)
+
+    MÉTHODE handle_input(self, event):
+        SI event.type != pygame.KEYDOWN:
+            RETOURNER None
+
+        # --- MODE MESSAGE ---
+        SI self.mode == MODE_MESSAGE:
+            SI event.key EST dans [pygame.K_SPACE, pygame.K_RETURN]:
+                # Passer au prochain événement
+                self._consommer_prochain_evenement()
+                RETOURNER {"type": "avancer_message"}
+
+        # --- MODE MENU ---
+        SI self.mode == MODE_MENU:
+            SI event.key == pygame.K_UP:
+                self.selection_index ← max(0, self.selection_index - 2)
+            SI event.key == pygame.K_DOWN:
+                self.selection_index ← min(3, self.selection_index + 2)
+            SI event.key == pygame.K_LEFT:
+                self.selection_index ← max(0, self.selection_index - 1)
+            SI event.key == pygame.K_RIGHT:
+                self.selection_index ← min(3, self.selection_index + 1)
+
+            SI event.key EST dans [pygame.K_SPACE, pygame.K_RETURN]:
+                SI self.selection_index == 0:
+                    self.mode ← MODE_ATTAQUES
+                    self.selection_index ← 0
+                SI self.selection_index == 1:
+                    self.mode ← MODE_SAC
+                    self.selection_index ← 0
+                SI self.selection_index == 2:
+                    self.mode ← MODE_POKEMON
+                    self.selection_index ← 0
+                SI self.selection_index == 3:
+                    RETOURNER {"type": "flee"}
+
+        # --- MODE ATTAQUES ---
+        SI self.mode == MODE_ATTAQUES:
+            attaques ← self.etat_combat["pokemon_joueur"].attaques
+
+            SI event.key == pygame.K_UP:
+                self.selection_index ← max(0, self.selection_index - 1)
+            SI event.key == pygame.K_DOWN:
+                self.selection_index ← min(len(attaques) - 1, self.selection_index + 1)
+            SI event.key == pygame.K_ESCAPE:
+                self.mode ← MODE_MENU
+                self.selection_index ← 0
+
+            SI event.key EST dans [pygame.K_SPACE, pygame.K_RETURN]:
+                SI self.selection_index < len(attaques):
+                    attaque_choisie ← attaques[self.selection_index]
+                    self.mode ← MODE_MESSAGE
+                    RETOURNER {"type": "attack", "attaque": attaque_choisie}
+
+        # --- MODE SAC ---
+        SI self.mode == MODE_SAC:
+            items ← self.etat_combat["items_combat"]    # fourni par state_combat
+
+            SI event.key == pygame.K_UP:
+                self.selection_index ← max(0, self.selection_index - 1)
+            SI event.key == pygame.K_DOWN:
+                self.selection_index ← min(len(items) - 1, self.selection_index + 1)
+            SI event.key == pygame.K_ESCAPE:
+                self.mode ← MODE_MENU
+                self.selection_index ← 0
+
+            SI event.key EST dans [pygame.K_SPACE, pygame.K_RETURN]:
+                SI self.selection_index < len(items):
+                    item_choisi, quantite ← items[self.selection_index]
+                    RETOURNER {"type": "item_choisi", "item": item_choisi}
+
+        # --- MODE POKEMON ---
+        SI self.mode == MODE_POKEMON:
+            team ← self.etat_combat["pokemon_joueur_team"]    # fourni par state_combat
+
+            SI event.key == pygame.K_UP:
+                self.selection_index ← max(0, self.selection_index - 1)
+            SI event.key == pygame.K_DOWN:
+                self.selection_index ← min(len(team) - 1, self.selection_index + 1)
+            SI event.key == pygame.K_ESCAPE:
+                self.mode ← MODE_MENU
+                self.selection_index ← 0
+
+            SI event.key EST dans [pygame.K_SPACE, pygame.K_RETURN]:
+                SI self.selection_index < len(team):
+                    pokemon_choisi ← team[self.selection_index]
+                    SI NOT pokemon_choisi.est_ko:
+                        RETOURNER {"type": "switch", "index": self.selection_index}
+
+        # --- MODE REMPLACEMENT (obligatoire) ---
+        SI self.mode == MODE_REMPLACEMENT:
+            team ← self.etat_combat["pokemon_joueur_team"]
+
+            SI event.key == pygame.K_UP:
+                self.selection_index ← max(0, self.selection_index - 1)
+            SI event.key == pygame.K_DOWN:
+                self.selection_index ← min(len(team) - 1, self.selection_index + 1)
+            # PAS de K_ESCAPE → le choix est obligatoire
+
+            SI event.key EST dans [pygame.K_SPACE, pygame.K_RETURN]:
+                SI self.selection_index < len(team):
+                    pokemon_choisi ← team[self.selection_index]
+                    SI NOT pokemon_choisi.est_ko:
+                        RETOURNER {"type": "remplacement", "index": self.selection_index}
+
+        RETOURNER None
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : draw
+    # -----------------------------------------------------------------
+    #
+    # Dessine tout l'écran de combat.
+    # Appelée à chaque frame par state_combat.py.
+
+    MÉTHODE draw(self, screen):
+        SI self.etat_combat EST None:
+            RETOURNER
+
+        # --- FOND ---
+        screen.fill((240, 240, 240))    # fond clair
+
+        # --- SPRITES ---
+        self._draw_sprites(screen)
+
+        # --- INFOS POKÉMON (noms, niveaux, barres PV) ---
+        self._draw_info_adverse(screen)
+        self._draw_info_joueur(screen)
+
+        # --- ZONE BASSE ---
+        self._draw_zone_basse(screen)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _draw_sprites
+    # -----------------------------------------------------------------
+    #
+    # Dessine les sprites des deux Pokémon.
+    # Gère les animations (flash, KO).
+
+    MÉTHODE _draw_sprites(self, screen):
+        # Sprite adverse
+        afficher_adverse ← True
+
+        SI self.animation_active ET self.animation_cible == "adverse":
+            SI self.animation_type == "flash_degats":
+                # Clignotement : visible une frame sur deux
+                SI int(self.animation_timer × 15) % 2 == 0:
+                    afficher_adverse ← False
+            SI self.animation_type == "ko":
+                # Le sprite descend
+                offset_y ← int(self.animation_timer / DUREE_ANIMATION_KO × 100)
+                SI self.sprite_adverse EST NOT None:
+                    screen.blit(self.sprite_adverse, (SPRITE_ADVERSE_X, SPRITE_ADVERSE_Y + offset_y))
+                afficher_adverse ← False
+
+        SI afficher_adverse ET self.sprite_adverse EST NOT None:
+            screen.blit(self.sprite_adverse, (SPRITE_ADVERSE_X, SPRITE_ADVERSE_Y))
+
+        # Sprite joueur (même logique)
+        afficher_joueur ← True
+
+        SI self.animation_active ET self.animation_cible == "joueur":
+            SI self.animation_type == "flash_degats":
+                SI int(self.animation_timer × 15) % 2 == 0:
+                    afficher_joueur ← False
+            SI self.animation_type == "ko":
+                offset_y ← int(self.animation_timer / DUREE_ANIMATION_KO × 100)
+                SI self.sprite_joueur EST NOT None:
+                    screen.blit(self.sprite_joueur, (SPRITE_JOUEUR_X, SPRITE_JOUEUR_Y + offset_y))
+                afficher_joueur ← False
+
+        SI afficher_joueur ET self.sprite_joueur EST NOT None:
+            screen.blit(self.sprite_joueur, (SPRITE_JOUEUR_X, SPRITE_JOUEUR_Y))
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _draw_info_adverse
+    # -----------------------------------------------------------------
+    #
+    # Dessine le panneau d'info du Pokémon adverse :
+    # nom, niveau, barre de PV.
+
+    MÉTHODE _draw_info_adverse(self, screen):
+        pokemon ← self.etat_combat["pokemon_adverse"]
+        SI pokemon EST None:
+            RETOURNER
+
+        # Nom et niveau
+        texte ← "{} Niv.{}".format(pokemon.nom, pokemon.niveau)
+        surface_texte ← self.font_nom.render(texte, True, (0, 0, 0))
+        screen.blit(surface_texte, (20, 20))
+
+        # Barre de PV
+        self._draw_barre_pv(screen, 20, 50,
+            self.pv_affiche_adverse, pokemon.pv_max)
+
+        # PV numériques
+        texte_pv ← "{}/{}".format(int(self.pv_affiche_adverse), pokemon.pv_max)
+        surface_pv ← self.font_pv.render(texte_pv, True, (60, 60, 60))
+        screen.blit(surface_pv, (20 + BARRE_PV_LARGEUR + 10, 48))
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _draw_info_joueur
+    # -----------------------------------------------------------------
+    #
+    # Dessine le panneau d'info du Pokémon du joueur.
+    # Même chose que _draw_info_adverse mais positionné différemment.
+
+    MÉTHODE _draw_info_joueur(self, screen):
+        pokemon ← self.etat_combat["pokemon_joueur"]
+        SI pokemon EST None:
+            RETOURNER
+
+        base_x ← SCREEN_WIDTH - 300
+        base_y ← 200
+
+        # Nom et niveau
+        texte ← "{} Niv.{}".format(pokemon.nom, pokemon.niveau)
+        surface_texte ← self.font_nom.render(texte, True, (0, 0, 0))
+        screen.blit(surface_texte, (base_x, base_y))
+
+        # Barre de PV
+        self._draw_barre_pv(screen, base_x, base_y + 30,
+            self.pv_affiche_joueur, pokemon.pv_max)
+
+        # PV numériques
+        texte_pv ← "{}/{}".format(int(self.pv_affiche_joueur), pokemon.pv_max)
+        surface_pv ← self.font_pv.render(texte_pv, True, (60, 60, 60))
+        screen.blit(surface_pv, (base_x + BARRE_PV_LARGEUR + 10, base_y + 28))
+
+        # Barre d'XP (plus petite, en bleu)
+        SI pokemon.xp_prochain_niveau > 0:
+            ratio_xp ← pokemon.xp / pokemon.xp_prochain_niveau
+            self._draw_barre(screen, base_x, base_y + 50,
+                BARRE_PV_LARGEUR, 6, ratio_xp, (80, 120, 255))
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _draw_barre_pv
+    # -----------------------------------------------------------------
+    #
+    # Dessine une barre de PV avec la bonne couleur.
+    #
+    # x, y : position en pixels
+    # pv_actuels : les PV affichés (peut être un float pendant l'animation)
+    # pv_max : les PV maximum
+
+    MÉTHODE _draw_barre_pv(self, screen, x, y, pv_actuels, pv_max):
+        SI pv_max == 0:
+            RETOURNER
+
+        ratio ← pv_actuels / pv_max
+        ratio ← max(0, min(1, ratio))
+
+        # Couleur selon le ratio
+        SI ratio > 0.5:
+            couleur ← COULEUR_PV_VERT
+        SINON SI ratio > 0.2:
+            couleur ← COULEUR_PV_JAUNE
+        SINON:
+            couleur ← COULEUR_PV_ROUGE
+
+        self._draw_barre(screen, x, y, BARRE_PV_LARGEUR, BARRE_PV_HAUTEUR, ratio, couleur)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _draw_barre
+    # -----------------------------------------------------------------
+    #
+    # Dessine une barre générique (PV, XP).
+    # Fond gris + remplissage coloré.
+
+    MÉTHODE _draw_barre(self, screen, x, y, largeur, hauteur, ratio, couleur):
+        # Fond gris
+        pygame.draw.rect(screen, (200, 200, 200), (x, y, largeur, hauteur))
+        # Remplissage
+        largeur_remplissage ← int(largeur × ratio)
+        SI largeur_remplissage > 0:
+            pygame.draw.rect(screen, couleur, (x, y, largeur_remplissage, hauteur))
+        # Bordure
+        pygame.draw.rect(screen, (100, 100, 100), (x, y, largeur, hauteur), 1)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _draw_zone_basse
+    # -----------------------------------------------------------------
+    #
+    # Dessine la zone basse de l'écran selon le mode actuel.
+
+    MÉTHODE _draw_zone_basse(self, screen):
+        # Fond de la zone basse
+        fond ← pygame.Surface((SCREEN_WIDTH, ZONE_BASSE_HAUTEUR))
+        fond.fill(COULEUR_DIALOGUE_FOND)
+        fond.set_alpha(240)
+        screen.blit(fond, (0, ZONE_BASSE_Y))
+
+        # Bordure
+        pygame.draw.rect(screen, COULEUR_DIALOGUE_BORDURE,
+            (0, ZONE_BASSE_Y, SCREEN_WIDTH, ZONE_BASSE_HAUTEUR), 3)
+
+        SI self.mode == MODE_MENU:
+            self._draw_menu(screen)
+        SINON SI self.mode == MODE_ATTAQUES:
+            self._draw_attaques(screen)
+        SINON SI self.mode == MODE_SAC:
+            self._draw_sac(screen)
+        SINON SI self.mode == MODE_POKEMON OU self.mode == MODE_REMPLACEMENT:
+            self._draw_equipe(screen)
+        SINON SI self.mode == MODE_MESSAGE:
+            self._draw_message(screen)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _draw_menu
+    # -----------------------------------------------------------------
+    #
+    # Dessine le menu principal (Attaquer / Sac / Pokémon / Fuir).
+    # Disposition en grille 2×2.
+    # Le curseur est affiché sur l'option sélectionnée.
+
+    MÉTHODE _draw_menu(self, screen):
+        positions ← [
+            (50, ZONE_BASSE_Y + 30),                            # Attaquer
+            (SCREEN_WIDTH / 2 + 50, ZONE_BASSE_Y + 30),         # Sac
+            (50, ZONE_BASSE_Y + 70),                             # Pokémon
+            (SCREEN_WIDTH / 2 + 50, ZONE_BASSE_Y + 70)          # Fuir
+        ]
+
+        POUR i, option DANS enumerate(self.options_menu):
+            couleur ← COULEUR_DIALOGUE_TEXTE
+            prefixe ← "  "
+
+            SI i == self.selection_index:
+                prefixe ← "> "
+
+            texte ← prefixe + option
+            surface ← self.font_menu.render(texte, True, couleur)
+            screen.blit(surface, positions[i])
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _draw_attaques
+    # -----------------------------------------------------------------
+    #
+    # Dessine la liste des attaques du Pokémon du joueur.
+    # Chaque attaque montre son nom, son type et sa puissance.
+
+    MÉTHODE _draw_attaques(self, screen):
+        attaques ← self.etat_combat["pokemon_joueur"].attaques
+
+        POUR i, attaque DANS enumerate(attaques):
+            prefixe ← "> " SI i == self.selection_index SINON "  "
+            texte ← "{}{} ({} — Puiss.{})".format(
+                prefixe, attaque["name"], attaque["type"], attaque["power"])
+            surface ← self.font_menu.render(texte, True, COULEUR_DIALOGUE_TEXTE)
+            screen.blit(surface, (50, ZONE_BASSE_Y + 20 + i × 30))
+
+        # Indication retour
+        surface_retour ← self.font_pv.render("[Échap] Retour", True, (150, 150, 150))
+        screen.blit(surface_retour, (SCREEN_WIDTH - 180, ZONE_BASSE_Y + ZONE_BASSE_HAUTEUR - 25))
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _draw_sac
+    # -----------------------------------------------------------------
+    #
+    # Dessine la liste des objets utilisables en combat.
+
+    MÉTHODE _draw_sac(self, screen):
+        items ← self.etat_combat.get("items_combat", [])
+
+        SI items EST vide:
+            surface ← self.font_menu.render("  Aucun objet disponible", True, COULEUR_DIALOGUE_TEXTE)
+            screen.blit(surface, (50, ZONE_BASSE_Y + 30))
+            RETOURNER
+
+        POUR i, (item, quantite) DANS enumerate(items):
+            prefixe ← "> " SI i == self.selection_index SINON "  "
+            texte ← "{}{} ×{}".format(prefixe, item.name, quantite)
+            surface ← self.font_menu.render(texte, True, COULEUR_DIALOGUE_TEXTE)
+            screen.blit(surface, (50, ZONE_BASSE_Y + 20 + i × 28))
+
+        surface_retour ← self.font_pv.render("[Échap] Retour", True, (150, 150, 150))
+        screen.blit(surface_retour, (SCREEN_WIDTH - 180, ZONE_BASSE_Y + ZONE_BASSE_HAUTEUR - 25))
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _draw_equipe
+    # -----------------------------------------------------------------
+    #
+    # Dessine la liste de l'équipe du joueur (mode POKEMON ou REMPLACEMENT).
+
+    MÉTHODE _draw_equipe(self, screen):
+        team ← self.etat_combat.get("pokemon_joueur_team", [])
+
+        POUR i, pokemon DANS enumerate(team):
+            prefixe ← "> " SI i == self.selection_index SINON "  "
+
+            SI pokemon.est_ko:
+                statut ← " [KO]"
+            SINON:
+                statut ← ""
+
+            texte ← "{}{} Niv.{} — PV: {}/{}{}".format(
+                prefixe, pokemon.nom, pokemon.niveau,
+                pokemon.pv_actuels, pokemon.pv_max, statut)
+            surface ← self.font_menu.render(texte, True, COULEUR_DIALOGUE_TEXTE)
+            screen.blit(surface, (50, ZONE_BASSE_Y + 10 + i × 22))
+
+        SI self.mode != MODE_REMPLACEMENT:
+            surface_retour ← self.font_pv.render("[Échap] Retour", True, (150, 150, 150))
+            screen.blit(surface_retour, (SCREEN_WIDTH - 180, ZONE_BASSE_Y + ZONE_BASSE_HAUTEUR - 25))
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _draw_message
+    # -----------------------------------------------------------------
+    #
+    # Dessine un message au centre de la zone basse.
+
+    MÉTHODE _draw_message(self, screen):
+        SI self.message_actuel N'EST PAS vide:
+            surface ← self.font_message.render(self.message_actuel, True, COULEUR_DIALOGUE_TEXTE)
+            screen.blit(surface, (50, ZONE_BASSE_Y + 40))
+
+        # Indicateur "appuyez sur Espace"
+        surface_hint ← self.font_pv.render("[Espace] Continuer", True, (150, 150, 150))
+        screen.blit(surface_hint, (SCREEN_WIDTH - 220, ZONE_BASSE_Y + ZONE_BASSE_HAUTEUR - 25))
