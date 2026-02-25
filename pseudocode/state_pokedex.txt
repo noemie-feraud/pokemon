@@ -1,0 +1,384 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+
+importer pygame
+importer State depuis states.state
+importer (SCREEN_WIDTH, SCREEN_HEIGHT, TOTAL_POKEMON) depuis config.settings
+
+
+# =============================================================================
+# CONSTANTES LOCALES
+# =============================================================================
+
+PANNEAU_X ← 60
+PANNEAU_Y ← 30
+PANNEAU_LARGEUR ← SCREEN_WIDTH - 120
+PANNEAU_HAUTEUR ← SCREEN_HEIGHT - 60
+LIGNES_VISIBLES ← 8
+
+
+# =============================================================================
+# CLASSE STATE POKEDEX
+# =============================================================================
+#
+# Écran du Pokédex transparent. Consultation de tous les Pokémon
+# rencontrés et capturés. Aucune action possible, juste navigation.
+
+CLASSE StatePokedex (hérite de State):
+
+    transparent ← True
+
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+
+    MÉTHODE __init__(self, game_manager):
+        super().__init__(game_manager)
+
+        self.player ← game_manager.player
+
+        # --- POLICES ---
+        self.font_titre ← pygame.font.Font(None, 34)
+        self.font_compteur ← pygame.font.Font(None, 22)
+        self.font_entry ← pygame.font.Font(None, 24)
+        self.font_detail ← pygame.font.Font(None, 22)
+        self.font_info ← pygame.font.Font(None, 20)
+
+        # --- DONNÉES ---
+        # Charger tous les Pokémon du catalogue (les 54)
+        # pour afficher les infos des Pokémon vus
+        self.pokemon_data ← game_manager.pokemon_data
+        self.tous_les_ids ← self.pokemon_data.get_all_ids()    # [1, 2, 3, ..., 54]
+
+        # --- NAVIGATION ---
+        self.selection_index ← 0
+        self.scroll_offset ← 0
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : on_enter
+    # -----------------------------------------------------------------
+
+    MÉTHODE on_enter(self):
+        passer    # pas de musique spéciale
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : handle_events
+    # -----------------------------------------------------------------
+
+    MÉTHODE handle_events(self, events):
+        POUR CHAQUE event DANS events:
+            SI event.type != pygame.KEYDOWN:
+                CONTINUER
+
+            # --- QUITTER ---
+            SI event.key == pygame.K_ESCAPE:
+                self.game_manager.state_manager.pop()
+                RETOURNER
+
+            # --- NAVIGUER ---
+            SI event.key == pygame.K_UP:
+                self._naviguer(-1)
+            SINON SI event.key == pygame.K_DOWN:
+                self._naviguer(1)
+
+
+    # -----------------------------------------------------------------
+    # NAVIGATION
+    # -----------------------------------------------------------------
+
+    MÉTHODE _naviguer(self, direction):
+        ancien ← self.selection_index
+        self.selection_index ← clamper(
+            self.selection_index + direction,
+            0,
+            len(self.tous_les_ids) - 1
+        )
+
+        SI self.selection_index != ancien:
+            self.game_manager.audio_manager.play_sfx("menu_select")
+
+        # Ajuster le scroll
+        SI self.selection_index < self.scroll_offset:
+            self.scroll_offset ← self.selection_index
+        SI self.selection_index >= self.scroll_offset + LIGNES_VISIBLES:
+            self.scroll_offset ← self.selection_index - LIGNES_VISIBLES + 1
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : update
+    # -----------------------------------------------------------------
+
+    MÉTHODE update(self, dt):
+        passer
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : render
+    # -----------------------------------------------------------------
+
+    MÉTHODE render(self, screen):
+        # --- OVERLAY SOMBRE ---
+        overlay ← pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+        overlay.fill((0, 0, 0))
+        overlay.set_alpha(120)
+        screen.blit(overlay, (0, 0))
+
+        # --- PANNEAU ---
+        panneau ← pygame.Surface((PANNEAU_LARGEUR, PANNEAU_HAUTEUR))
+        panneau.fill((25, 28, 48))
+        screen.blit(panneau, (PANNEAU_X, PANNEAU_Y))
+        pygame.draw.rect(screen, (100, 100, 140),
+            (PANNEAU_X, PANNEAU_Y, PANNEAU_LARGEUR, PANNEAU_HAUTEUR), 2)
+
+        # --- TITRE + COMPTEURS ---
+        self._draw_header(screen)
+
+        # --- LISTE ---
+        self._draw_liste(screen)
+
+        # --- DÉTAILS ---
+        self._draw_details(screen)
+
+        # --- CONTRÔLES ---
+        self._draw_controles(screen)
+
+
+    # -----------------------------------------------------------------
+    # RENDU : HEADER (titre + compteurs)
+    # -----------------------------------------------------------------
+
+    MÉTHODE _draw_header(self, screen):
+        # Titre
+        surface_titre ← self.font_titre.render("Pokédex", True, (255, 255, 255))
+        titre_x ← PANNEAU_X + 20
+        screen.blit(surface_titre, (titre_x, PANNEAU_Y + 10))
+
+        # Compteurs
+        pokedex ← self.player.pokedex
+        total ← TOTAL_POKEMON    # 54
+
+        texte_vus ← "Vus: {}/{}".format(pokedex.get_total_vus(), total)
+        texte_captures ← "Capturés: {}/{}".format(pokedex.get_total_captures(), total)
+
+        surface_vus ← self.font_compteur.render(texte_vus, True, (180, 220, 255))
+        surface_cap ← self.font_compteur.render(texte_captures, True, (255, 220, 100))
+
+        screen.blit(surface_vus, (PANNEAU_X + PANNEAU_LARGEUR - 320, PANNEAU_Y + 15))
+        screen.blit(surface_cap, (PANNEAU_X + PANNEAU_LARGEUR - 160, PANNEAU_Y + 15))
+
+        # Barre de progression globale
+        barre_x ← PANNEAU_X + 20
+        barre_y ← PANNEAU_Y + 42
+        barre_largeur ← PANNEAU_LARGEUR - 40
+        barre_hauteur ← 6
+
+        ratio ← pokedex.get_total_vus() / total SI total > 0 SINON 0
+
+        pygame.draw.rect(screen, (40, 40, 60),
+            (barre_x, barre_y, barre_largeur, barre_hauteur))
+        remplissage ← int(barre_largeur × ratio)
+        SI remplissage > 0:
+            pygame.draw.rect(screen, (100, 180, 255),
+                (barre_x, barre_y, remplissage, barre_hauteur))
+
+
+    # -----------------------------------------------------------------
+    # RENDU : LISTE DES 54 POKÉMON
+    # -----------------------------------------------------------------
+    #
+    # Chaque ligne :
+    #   #001 ● Flamèche          Feu         ★
+    #   #005   ?????????         ???
+    #
+    # ● = vu, ★ = capturé, rien = non rencontré
+
+    MÉTHODE _draw_liste(self, screen):
+        zone_x ← PANNEAU_X + 15
+        zone_y ← PANNEAU_Y + 58
+        hauteur_ligne ← 30
+        pokedex ← self.player.pokedex
+
+        debut ← self.scroll_offset
+        fin ← min(debut + LIGNES_VISIBLES, len(self.tous_les_ids))
+
+        POUR i DE debut À fin - 1:
+            pokemon_id ← self.tous_les_ids[i]
+            y ← zone_y + (i - debut) × hauteur_ligne
+            est_vu ← pokedex.est_vu(pokemon_id)
+            est_capture ← pokedex.est_capture(pokemon_id)
+
+            # --- SURBRILLANCE ---
+            SI i == self.selection_index:
+                fond_rect ← pygame.Rect(zone_x - 5, y, PANNEAU_LARGEUR - 20, hauteur_ligne - 2)
+                pygame.draw.rect(screen, (45, 50, 75), fond_rect)
+
+            # --- NUMÉRO ---
+            texte_num ← "#{:03d}".format(pokemon_id)
+            couleur_num ← (200, 200, 200) SI est_vu SINON (80, 80, 80)
+            surface_num ← self.font_entry.render(texte_num, True, couleur_num)
+            screen.blit(surface_num, (zone_x, y + 3))
+
+            # --- ICÔNE DE STATUT ---
+            SI est_capture:
+                icone ← "●"
+                couleur_icone ← (100, 255, 100)
+            SINON SI est_vu:
+                icone ← "○"
+                couleur_icone ← (180, 180, 255)
+            SINON:
+                icone ← " "
+                couleur_icone ← (80, 80, 80)
+
+            surface_icone ← self.font_entry.render(icone, True, couleur_icone)
+            screen.blit(surface_icone, (zone_x + 55, y + 3))
+
+            # --- NOM ---
+            SI est_vu:
+                pokemon_info ← self.pokemon_data.get_info(pokemon_id)
+                nom ← pokemon_info["name_custom"]
+                couleur_nom ← (255, 255, 255)
+            SINON:
+                nom ← "?????????"
+                couleur_nom ← (70, 70, 70)
+
+            surface_nom ← self.font_entry.render(nom, True, couleur_nom)
+            screen.blit(surface_nom, (zone_x + 80, y + 3))
+
+            # --- TYPE ---
+            SI est_vu:
+                types_texte ← " / ".join(pokemon_info["types"])
+                couleur_type ← (180, 200, 220)
+            SINON:
+                types_texte ← "???"
+                couleur_type ← (70, 70, 70)
+
+            surface_type ← self.font_info.render(types_texte, True, couleur_type)
+            screen.blit(surface_type, (zone_x + 300, y + 5))
+
+            # --- ÉTOILE CAPTURÉ ---
+            SI est_capture:
+                surface_star ← self.font_entry.render("★", True, (255, 220, 50))
+                screen.blit(surface_star, (zone_x + PANNEAU_LARGEUR - 60, y + 3))
+
+        # --- INDICATEURS DE SCROLL ---
+        SI debut > 0:
+            surface ← self.font_info.render("▲ ...", True, (150, 150, 150))
+            screen.blit(surface, (zone_x, zone_y - 15))
+        SI fin < len(self.tous_les_ids):
+            surface ← self.font_info.render("▼ ...", True, (150, 150, 150))
+            screen.blit(surface, (zone_x, zone_y + LIGNES_VISIBLES × hauteur_ligne))
+
+
+    # -----------------------------------------------------------------
+    # RENDU : DÉTAILS DU POKÉMON SÉLECTIONNÉ
+    # -----------------------------------------------------------------
+    #
+    # Panneau en bas avec les infos détaillées.
+    # Si le Pokémon n'est pas vu → "Pokémon inconnu"
+    # Si vu → nom, types, stats de base, chaîne d'évolution
+
+    MÉTHODE _draw_details(self, screen):
+        detail_y ← PANNEAU_Y + PANNEAU_HAUTEUR - 175
+        detail_hauteur ← 140
+
+        # Cadre
+        detail_rect ← pygame.Rect(PANNEAU_X + 10, detail_y,
+                                    PANNEAU_LARGEUR - 20, detail_hauteur)
+        pygame.draw.rect(screen, (30, 35, 55), detail_rect)
+        pygame.draw.rect(screen, (80, 80, 120), detail_rect, 1)
+
+        pokemon_id ← self.tous_les_ids[self.selection_index]
+        pokedex ← self.player.pokedex
+
+        SI NOT pokedex.est_vu(pokemon_id):
+            # Pokémon non rencontré
+            surface ← self.font_detail.render(
+                "Pokémon #{:03d} — Pas encore rencontré".format(pokemon_id),
+                True, (100, 100, 100))
+            screen.blit(surface, (PANNEAU_X + 30, detail_y + 55))
+            RETOURNER
+
+        # Pokémon vu → afficher les détails
+        info ← self.pokemon_data.get_info(pokemon_id)
+        col_x ← PANNEAU_X + 25
+        col2_x ← PANNEAU_X + PANNEAU_LARGEUR / 2 + 10
+
+        # --- LIGNE 1 : Nom, ID, Types ---
+        texte_id ← "#{:03d} {} — Type: {}".format(
+            pokemon_id,
+            info["name_custom"],
+            " / ".join(info["types"])
+        )
+        surface_id ← self.font_detail.render(texte_id, True, (255, 255, 255))
+        screen.blit(surface_id, (col_x, detail_y + 10))
+
+        # --- LIGNE 2 : Stats de base ---
+        stats ← info["base_stats"]
+        texte_stats ← "PV: {}   ATK: {}   DEF: {}".format(
+            stats["hp"], stats["attack"], stats["defense"])
+        surface_stats ← self.font_detail.render(texte_stats, True, (200, 220, 255))
+        screen.blit(surface_stats, (col_x, detail_y + 38))
+
+        # --- LIGNE 3 : Jour/Nuit ---
+        day_night ← info.get("day_night", "diurne")
+        SI day_night == "diurne":
+            texte_dn ← "Affinité: Diurne (bonus le jour)"
+            couleur_dn ← (255, 220, 100)
+        SINON:
+            texte_dn ← "Affinité: Nocturne (bonus la nuit)"
+            couleur_dn ← (150, 150, 255)
+
+        surface_dn ← self.font_info.render(texte_dn, True, couleur_dn)
+        screen.blit(surface_dn, (col_x, detail_y + 63))
+
+        # --- LIGNE 4 : Évolution ---
+        evolution ← info.get("evolution", None)
+        SI evolution EST NOT None ET evolution.get("to") EST NOT None:
+            evo_id ← evolution["to"]
+            evo_info ← self.pokemon_data.get_info(evo_id)
+            evo_niveau ← evolution.get("level", "?")
+
+            # Si l'évolution est vue dans le pokédex, montrer le nom
+            SI pokedex.est_vu(evo_id):
+                evo_nom ← evo_info["name_custom"]
+            SINON:
+                evo_nom ← "???"
+
+            texte_evo ← "Évolue en {} au niveau {}".format(evo_nom, evo_niveau)
+        SINON:
+            texte_evo ← "Dernier stade — Pas d'évolution"
+
+        surface_evo ← self.font_info.render(texte_evo, True, (180, 180, 200))
+        screen.blit(surface_evo, (col_x, detail_y + 85))
+
+        # --- STATUT CAPTURÉ ---
+        SI pokedex.est_capture(pokemon_id):
+            texte_statut ← "★ Capturé"
+            couleur_statut ← (255, 220, 50)
+        SINON:
+            texte_statut ← "○ Vu uniquement"
+            couleur_statut ← (180, 180, 220)
+
+        surface_statut ← self.font_detail.render(texte_statut, True, couleur_statut)
+        screen.blit(surface_statut, (col2_x, detail_y + 85))
+
+        # --- STADE ---
+        stade ← info.get("stade", 1)
+        texte_stade ← "Stade {}".format(stade)
+        surface_stade ← self.font_info.render(texte_stade, True, (150, 170, 200))
+        screen.blit(surface_stade, (col2_x, detail_y + 38))
+
+
+    # -----------------------------------------------------------------
+    # RENDU : CONTRÔLES
+    # -----------------------------------------------------------------
+
+    MÉTHODE _draw_controles(self, screen):
+        texte ← "[↑↓] Naviguer  [Échap] Fermer"
+        surface ← self.font_info.render(texte, True, (120, 120, 120))
+        pos_x ← PANNEAU_X + (PANNEAU_LARGEUR - surface.get_width()) / 2
+        screen.blit(surface, (pos_x, PANNEAU_Y + PANNEAU_HAUTEUR - 25))
