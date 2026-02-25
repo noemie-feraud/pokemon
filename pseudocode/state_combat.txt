@@ -1,0 +1,599 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+
+importer pygame
+importer State depuis states.state
+importer Combat depuis combat.combat
+importer CombatUI depuis ui.combat_ui
+importer (SCREEN_WIDTH, SCREEN_HEIGHT) depuis config.settings
+
+
+# =============================================================================
+# CONSTANTES LOCALES
+# =============================================================================
+
+PHASE_INTRO ← "intro"
+PHASE_CHOIX_JOUEUR ← "choix_joueur"
+PHASE_EXECUTION ← "execution"
+PHASE_REMPLACEMENT ← "remplacement"
+PHASE_EVOLUTION ← "evolution"
+PHASE_FIN ← "fin"
+
+
+# =============================================================================
+# CLASSE STATE COMBAT
+# =============================================================================
+#
+# Contrôleur du combat. Connecte le model (Combat) et la view (CombatUI).
+# Pushé par state_exploration.py, se pop quand le combat se termine.
+
+CLASSE StateCombat (hérite de State):
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+    #
+    # game_manager : référence vers Game
+    # pokemon_adverse : le Pokémon adverse (sauvage ou premier du dresseur)
+    # type_combat : "sauvage" ou "dresseur"
+    # trainer : l'instance Trainer (None si sauvage)
+
+    MÉTHODE __init__(self, game_manager, pokemon_adverse, type_combat, trainer=None):
+        super().__init__(game_manager)
+
+        self.type_combat ← type_combat
+        self.trainer ← trainer
+        self.pokemon_adverse ← pokemon_adverse
+
+        # --- RÉCUPÉRER LE PREMIER POKÉMON DU JOUEUR ---
+        player ← game_manager.player
+        self.pokemon_joueur ← player.team.get_premier_valide()
+
+        # --- CRÉER LE MODEL ---
+        self.combat ← Combat(
+            pokemon_joueur=self.pokemon_joueur,
+            pokemon_adverse=self.pokemon_adverse,
+            type_combat=type_combat,
+            trainer=trainer,
+            day_night_cycle=game_manager.day_night_cycle
+        )
+
+        # --- CRÉER LA VIEW ---
+        self.combat_ui ← CombatUI(game_manager)
+        self.combat_ui.set_etat(
+            pokemon_joueur=self.pokemon_joueur,
+            pokemon_adverse=self.pokemon_adverse,
+            type_combat=type_combat
+        )
+
+        # --- PHASE ---
+        self.phase ← PHASE_INTRO
+
+        # --- ÉVÉNEMENTS ---
+        self.evenements ← []
+        self.index_evenement ← 0
+
+        # --- ÉVOLUTIONS EN ATTENTE ---
+        self.evolutions_en_attente ← []
+        self.index_evolution ← 0
+
+        # --- MESSAGE D'INTRO ---
+        SI type_combat == "sauvage":
+            message_intro ← "Un {} sauvage apparaît !".format(pokemon_adverse.nom)
+        SINON:
+            message_intro ← "{} veut combattre !".format(trainer.nom)
+
+        self.combat_ui.set_evenements([
+            {"type": "message", "texte": message_intro}
+        ])
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : on_enter
+    # -----------------------------------------------------------------
+
+    MÉTHODE on_enter(self):
+        self.game_manager.audio_manager.play_music("combat")
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : handle_events
+    # -----------------------------------------------------------------
+    #
+    # Gère les inputs selon la phase actuelle.
+
+    MÉTHODE handle_events(self, events):
+        POUR CHAQUE event DANS events:
+            SI event.type != pygame.KEYDOWN:
+                CONTINUER
+
+            SI self.phase == PHASE_INTRO:
+                self._handle_intro(event)
+
+            SINON SI self.phase == PHASE_CHOIX_JOUEUR:
+                self._handle_choix_joueur(event)
+
+            SINON SI self.phase == PHASE_EXECUTION:
+                self._handle_execution(event)
+
+            SINON SI self.phase == PHASE_REMPLACEMENT:
+                self._handle_remplacement(event)
+
+            SINON SI self.phase == PHASE_EVOLUTION:
+                self._handle_evolution(event)
+
+            SINON SI self.phase == PHASE_FIN:
+                self._handle_fin(event)
+
+
+    # -----------------------------------------------------------------
+    # PHASE INTRO
+    # -----------------------------------------------------------------
+    #
+    # Le message d'intro est affiché. Espace pour continuer.
+
+    MÉTHODE _handle_intro(self, event):
+        SI event.key == pygame.K_SPACE:
+            SI self.combat_ui.evenement_suivant():
+                # Il reste des événements d'intro → on avance
+                passer
+            SINON:
+                # Intro terminée → passer au choix du joueur
+                self.phase ← PHASE_CHOIX_JOUEUR
+                self.combat_ui.set_mode("menu")
+
+
+    # -----------------------------------------------------------------
+    # PHASE CHOIX DU JOUEUR
+    # -----------------------------------------------------------------
+    #
+    # Le joueur navigue dans les menus et choisit une action.
+    # Le combat_ui gère la navigation (flèches + Espace) et retourne
+    # un dict d'action quand le joueur a confirmé son choix.
+
+    MÉTHODE _handle_choix_joueur(self, event):
+        action ← self.combat_ui.handle_input(event)
+
+        SI action EST None:
+            RETOURNER    # le joueur navigue encore
+
+        # Le joueur a choisi une action
+        # action = {"type": "attack", "attack_index": 0}
+        #        ou {"type": "item", "item_id": "potion"}
+        #        ou {"type": "switch", "pokemon_index": 2}
+        #        ou {"type": "flee"}
+
+        self._executer_action(action)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _executer_action
+    # -----------------------------------------------------------------
+    #
+    # Envoie l'action du joueur au model et récupère les événements.
+    #
+    # action : dict avec le type et les paramètres
+
+    MÉTHODE _executer_action(self, action):
+        player ← self.game_manager.player
+
+        # --- FUITE ---
+        SI action["type"] == "flee":
+            SI self.type_combat == "dresseur":
+                # Impossible de fuir un dresseur
+                self.combat_ui.set_evenements([
+                    {"type": "message", "texte": "Impossible de fuir un combat de dresseur !"}
+                ])
+                self.phase ← PHASE_EXECUTION
+                RETOURNER
+            SINON:
+                # Fuite toujours réussie (sauvage)
+                self.combat_ui.set_evenements([
+                    {"type": "message", "texte": "Vous prenez la fuite !"},
+                    {"type": "fin_combat", "resultat": "fuite"}
+                ])
+                self.phase ← PHASE_EXECUTION
+                RETOURNER
+
+        # --- SWITCH ---
+        SI action["type"] == "switch":
+            pokemon_choisi ← player.team.pokemons[action["pokemon_index"]]
+            self.combat.switch_pokemon_joueur(pokemon_choisi)
+            self.pokemon_joueur ← pokemon_choisi
+
+            # Le switch consomme le tour → l'adversaire attaque
+            evenements ← self.combat.executer_tour_apres_switch()
+            self._traiter_evenements(evenements)
+            RETOURNER
+
+        # --- ITEM ---
+        SI action["type"] == "item":
+            item ← self.game_manager.item_catalog.get_item(action["item_id"])
+
+            SI item.categorie == "pokeball":
+                # Tentative de capture
+                importer tenter_capture depuis combat.capture_system
+                resultat ← tenter_capture(
+                    self.pokemon_adverse, item,
+                    player.team, player.storage,
+                    self.type_combat
+                )
+                player.inventory.retirer(item.id, 1)
+
+                evenements ← self._creer_evenements_capture(resultat)
+                self._traiter_evenements(evenements)
+                RETOURNER
+            SINON:
+                # Utilisation d'objet de soin/boost
+                evenements ← self.combat.executer_tour(
+                    {"type": "item", "item": item, "cible": self.pokemon_joueur}
+                )
+                player.inventory.retirer(item.id, 1)
+                self._traiter_evenements(evenements)
+                RETOURNER
+
+        # --- ATTAQUE ---
+        SI action["type"] == "attack":
+            attaque ← self.pokemon_joueur.attaques[action["attack_index"]]
+            evenements ← self.combat.executer_tour(
+                {"type": "attack", "attaque": attaque}
+            )
+            self._traiter_evenements(evenements)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _traiter_evenements
+    # -----------------------------------------------------------------
+    #
+    # Reçoit les événements du model, les enrichit si nécessaire,
+    # et les passe à la view.
+
+    MÉTHODE _traiter_evenements(self, evenements):
+        self.evenements ← evenements
+        self.index_evenement ← 0
+        self.combat_ui.set_evenements(evenements)
+        self.phase ← PHASE_EXECUTION
+
+        # Mettre à jour l'état visuel (PV, niveaux, etc.)
+        self.combat_ui.set_etat(
+            pokemon_joueur=self.combat.pokemon_joueur,
+            pokemon_adverse=self.combat.pokemon_adverse,
+            type_combat=self.type_combat
+        )
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _creer_evenements_capture
+    # -----------------------------------------------------------------
+    #
+    # Transforme le résultat de capture_system en événements
+    # affichables par le combat_ui.
+    #
+    # resultat : dict retourné par tenter_capture()
+
+    MÉTHODE _creer_evenements_capture(self, resultat):
+        evenements ← []
+
+        # Animation de lancer de ball
+        evenements.ajouter({
+            "type": "capture_lancer",
+            "nombre_secousses": resultat.get("nombre_secousses", 0)
+        })
+
+        SI resultat["capture_reussie"]:
+            evenements.ajouter({
+                "type": "message",
+                "texte": "{} a été capturé !".format(resultat["pokemon_capture"].nom)
+            })
+
+            SI resultat["destination"] == "storage":
+                evenements.ajouter({
+                    "type": "message",
+                    "texte": "L'équipe est pleine. {} a été envoyé au stockage.".format(
+                        resultat["pokemon_capture"].nom)
+                })
+
+            evenements.ajouter({
+                "type": "fin_combat", "resultat": "capture"
+            })
+        SINON:
+            evenements.ajouter({
+                "type": "message",
+                "texte": "Raté ! {} s'est libéré !".format(self.pokemon_adverse.nom)
+            })
+
+            # L'adversaire attaque après une capture ratée
+            evenements_tour ← self.combat.executer_tour_adversaire_seul()
+            evenements.étendre(evenements_tour)
+
+        RETOURNER evenements
+
+
+    # -----------------------------------------------------------------
+    # PHASE EXÉCUTION
+    # -----------------------------------------------------------------
+    #
+    # Les événements défilent un par un. Espace pour avancer.
+
+    MÉTHODE _handle_execution(self, event):
+        SI event.key == pygame.K_SPACE:
+            # Vérifier si l'animation en cours est terminée
+            SI NOT self.combat_ui.animation_terminee():
+                # L'animation est en cours → la terminer immédiatement
+                self.combat_ui.skip_animation()
+                RETOURNER
+
+            SI self.combat_ui.evenement_suivant():
+                # Il reste des événements → avancer
+                passer
+            SINON:
+                # Tous les événements affichés → déterminer la suite
+                self._apres_evenements()
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _apres_evenements
+    # -----------------------------------------------------------------
+    #
+    # Appelée quand tous les événements d'un tour ont été affichés.
+    # Détermine quoi faire ensuite.
+
+    MÉTHODE _apres_evenements(self):
+        # Chercher l'événement de fin dans la liste
+        POUR CHAQUE evt DANS self.evenements:
+            SI evt["type"] == "fin_combat":
+                self._commencer_fin_combat(evt["resultat"])
+                RETOURNER
+
+            SI evt["type"] == "choix_remplacement":
+                # Le Pokémon du joueur est KO → forcer un remplacement
+                SI self.game_manager.player.team.a_pokemon_valide():
+                    self.phase ← PHASE_REMPLACEMENT
+                    self.combat_ui.set_mode("remplacement")
+                SINON:
+                    # Plus aucun Pokémon vivant → défaite
+                    self._commencer_fin_combat("defaite")
+                RETOURNER
+
+        # Rien de spécial → retour au choix du joueur
+        self.phase ← PHASE_CHOIX_JOUEUR
+        self.combat_ui.set_mode("menu")
+
+
+    # -----------------------------------------------------------------
+    # PHASE REMPLACEMENT
+    # -----------------------------------------------------------------
+    #
+    # Le joueur doit choisir un Pokémon pour remplacer celui qui est KO.
+    # Pas d'annulation possible (Échap ne fait rien).
+
+    MÉTHODE _handle_remplacement(self, event):
+        action ← self.combat_ui.handle_input(event)
+
+        SI action EST None:
+            RETOURNER
+
+        SI action["type"] != "switch":
+            RETOURNER    # on accepte que des switch
+
+        # Effectuer le switch
+        pokemon_choisi ← self.game_manager.player.team.pokemons[action["pokemon_index"]]
+        self.combat.switch_pokemon_joueur(pokemon_choisi)
+        self.pokemon_joueur ← pokemon_choisi
+
+        # Mettre à jour la view
+        self.combat_ui.set_etat(
+            pokemon_joueur=self.pokemon_joueur,
+            pokemon_adverse=self.combat.pokemon_adverse,
+            type_combat=self.type_combat
+        )
+
+        # Message de switch
+        self.combat_ui.set_evenements([
+            {"type": "message", "texte": "Go {} !".format(pokemon_choisi.nom)}
+        ])
+        self.phase ← PHASE_EXECUTION
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _commencer_fin_combat
+    # -----------------------------------------------------------------
+    #
+    # Prépare la phase de fin de combat.
+    #
+    # resultat : "victoire", "defaite", "fuite", "capture"
+
+    MÉTHODE _commencer_fin_combat(self, resultat):
+        self.resultat_final ← resultat
+        evenements_fin ← []
+
+        SI resultat == "victoire":
+            evenements_fin ← self._preparer_victoire()
+
+        SINON SI resultat == "defaite":
+            evenements_fin ← self._preparer_defaite()
+
+        # Fuite et capture n'ont pas d'événements supplémentaires
+
+        SI len(evenements_fin) > 0:
+            self.combat_ui.set_evenements(evenements_fin)
+            self.phase ← PHASE_EXECUTION
+            # Quand ces événements seront finis, on repassera ici
+            # avec rien à afficher → phase FIN
+
+            # On remplace l'événement fin_combat par un flag
+            self.attente_fin ← True
+        SINON:
+            self.phase ← PHASE_FIN
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _preparer_victoire
+    # -----------------------------------------------------------------
+    #
+    # Calcule et affiche les récompenses de victoire.
+    # Retourne une liste d'événements à afficher.
+
+    MÉTHODE _preparer_victoire(self):
+        player ← self.game_manager.player
+        evenements ← []
+
+        # --- CRÉDITS (dresseur uniquement) ---
+        SI self.type_combat == "dresseur" ET self.trainer EST NOT None:
+            credits ← self.trainer.get_reward()
+            player.credits ← player.credits + credits
+            evenements.ajouter({
+                "type": "message",
+                "texte": "Vous avez gagné {} crédits !".format(credits)
+            })
+
+            # Marquer le dresseur comme battu
+            player.trainers_beaten.ajouter(self.trainer.id)
+
+        # --- XP ---
+        # L'XP a déjà été calculée et ajoutée pendant les événements
+        # du combat.py. Ici on vérifie les évolutions possibles.
+
+        # --- ÉVOLUTIONS ---
+        POUR CHAQUE pokemon DANS player.team.pokemons:
+            SI pokemon.peut_evoluer():
+                self.evolutions_en_attente.ajouter(pokemon)
+
+        # Si des évolutions sont en attente, elles seront traitées
+        # après les événements de fin
+
+        RETOURNER evenements
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _preparer_defaite
+    # -----------------------------------------------------------------
+    #
+    # Gère la défaite : soigne l'équipe, prépare la téléportation.
+
+    MÉTHODE _preparer_defaite(self):
+        player ← self.game_manager.player
+
+        # Soigner toute l'équipe
+        player.team.soigner_tous()
+
+        # La téléportation au Centre Pokémon sera gérée par
+        # state_exploration quand on reviendra (via on_enter)
+        player.doit_teleporter_centre ← True
+
+        RETOURNER [
+            {"type": "message", "texte": "Vous n'avez plus de Pokémon..."},
+            {"type": "message", "texte": "Vous êtes ramené au Centre Pokémon."}
+        ]
+
+
+    # -----------------------------------------------------------------
+    # PHASE ÉVOLUTION
+    # -----------------------------------------------------------------
+    #
+    # Propose l'évolution de chaque Pokémon éligible.
+    # Le joueur choisit Oui ou Non pour chaque.
+
+    MÉTHODE _handle_evolution(self, event):
+        SI event.key == pygame.K_SPACE OU event.key == pygame.K_RETURN:
+            # Accepter l'évolution
+            pokemon ← self.evolutions_en_attente[self.index_evolution]
+            pokemon.evoluer()
+
+            self.combat_ui.set_evenements([{
+                "type": "message",
+                "texte": "{} a évolué en {} !".format(
+                    pokemon.nom_avant_evolution, pokemon.nom)
+            }])
+
+            self.index_evolution ← self.index_evolution + 1
+            self._verifier_evolutions_restantes()
+
+        SINON SI event.key == pygame.K_ESCAPE:
+            # Refuser l'évolution
+            self.index_evolution ← self.index_evolution + 1
+            self._verifier_evolutions_restantes()
+
+
+    MÉTHODE _verifier_evolutions_restantes(self):
+        SI self.index_evolution < len(self.evolutions_en_attente):
+            # Encore des évolutions → afficher la prochaine
+            pokemon ← self.evolutions_en_attente[self.index_evolution]
+            evolution_nom ← pokemon.get_evolution_nom()
+            self.combat_ui.set_evenements([{
+                "type": "message",
+                "texte": "{} veut évoluer en {} ! [Entrée] Oui  [Échap] Non".format(
+                    pokemon.nom, evolution_nom)
+            }])
+            self.phase ← PHASE_EXECUTION    # afficher le message d'abord
+            # Quand le message sera affiché, on passera en PHASE_EVOLUTION
+        SINON:
+            # Toutes les évolutions traitées → fin
+            self.phase ← PHASE_FIN
+
+
+    # -----------------------------------------------------------------
+    # PHASE FIN
+    # -----------------------------------------------------------------
+    #
+    # Le combat est terminé. Espace pour quitter.
+
+    MÉTHODE _handle_fin(self, event):
+        SI event.key == pygame.K_SPACE:
+            self._quitter_combat()
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _quitter_combat
+    # -----------------------------------------------------------------
+    #
+    # Pop le StateCombat de la pile pour revenir à l'exploration.
+
+    MÉTHODE _quitter_combat(self):
+        # Callback dresseur si victoire
+        SI self.resultat_final == "victoire" ET self.trainer EST NOT None:
+            self.trainer.on_defaite()
+
+        # Retour à l'exploration
+        self.game_manager.state_manager.pop()
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : update
+    # -----------------------------------------------------------------
+    #
+    # Met à jour les animations du combat_ui.
+
+    MÉTHODE update(self, dt):
+        self.combat_ui.update(dt)
+
+        # Vérifier si on attend la fin des événements pour passer
+        # en phase évolution
+        SI hasattr(self, "attente_fin") ET self.attente_fin:
+            SI self.phase == PHASE_CHOIX_JOUEUR:
+                # Les événements de fin sont terminés
+                self.attente_fin ← False
+
+                SI len(self.evolutions_en_attente) > 0:
+                    self.index_evolution ← 0
+                    pokemon ← self.evolutions_en_attente[0]
+                    evolution_nom ← pokemon.get_evolution_nom()
+                    self.combat_ui.set_evenements([{
+                        "type": "message",
+                        "texte": "{} veut évoluer en {} ! [Entrée] Oui  [Échap] Non".format(
+                            pokemon.nom, evolution_nom)
+                    }])
+                    self.phase ← PHASE_EVOLUTION
+                SINON:
+                    self.phase ← PHASE_FIN
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : render
+    # -----------------------------------------------------------------
+    #
+    # Délègue tout le rendu au combat_ui.
+
+    MÉTHODE render(self, screen):
+        self.combat_ui.draw(screen)
