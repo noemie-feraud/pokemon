@@ -1,0 +1,381 @@
+# =============================================================================
+# CLASSE POKEMON CENTER
+# =============================================================================
+#
+# Gère la logique d'échange entre l'équipe et le stockage.
+# Vérifie les règles (au moins 1 valide, max 6 dans l'équipe).
+# Coordonne Team et Storage sans qu'ils se connaissent.
+
+CLASSE PokemonCenter:
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+    #
+    # player : l'objet Player, pour accéder à team et storage.
+    #
+    # On stocke des références directes vers team et storage
+    # pour pas écrire player.team et player.storage partout.
+
+    MÉTHODE __init__(self, player):
+        self.player ← player
+        self.team ← player.team
+        self.storage ← player.storage
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_equipe
+    # -----------------------------------------------------------------
+    #
+    # Renvoie la liste des Pokémon de l'équipe.
+    # Utilisé par state_pokemon_center.py pour afficher la colonne
+    # de gauche (l'équipe).
+
+    MÉTHODE get_equipe(self):
+        RETOURNER self.team.get_all()
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_stockage
+    # -----------------------------------------------------------------
+    #
+    # Renvoie la liste des Pokémon du stockage.
+    # Utilisé pour afficher la colonne de droite.
+
+    MÉTHODE get_stockage(self):
+        RETOURNER self.storage.get_all()
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : peut_deposer
+    # -----------------------------------------------------------------
+    #
+    # Vérifie si un Pokémon de l'équipe peut être déposé au stockage.
+    #
+    # Conditions :
+    #   1. L'index est valide
+    #   2. Après le dépôt, l'équipe a encore au moins 1 Pokémon non-KO
+    #
+    # La deuxième condition c'est la règle CA-87.
+    # On simule le retrait pour vérifier sans modifier l'état.
+    #
+    # index_equipe : l'index du Pokémon dans l'équipe (0 à 5)
+    #
+    # Renvoie un dictionnaire :
+    #   {"possible": bool, "raison": string ou None}
+    #
+    # Utilisé par state_pokemon_center.py pour griser le bouton
+    # "Déposer" quand c'est pas possible, et pour afficher la
+    # raison au joueur.
+
+    MÉTHODE peut_deposer(self, index_equipe):
+        # Vérifier l'index
+        SI index_equipe < 0 OU index_equipe >= self.team.taille:
+            RETOURNER {"possible": False, "raison": "index_invalide"}
+
+        # Vérifier qu'on a plus d'un Pokémon
+        SI self.team.taille <= 1:
+            RETOURNER {"possible": False, "raison": "dernier_pokemon"}
+
+        # Simuler le retrait pour vérifier la règle du Pokémon valide
+        pokemon ← self.team.get_pokemon(index_equipe)
+        compte_valides_apres ← 0
+
+        POUR i DE 0 À self.team.taille - 1:
+            SI i != index_equipe:
+                SI NOT self.team.get_pokemon(i).est_ko:
+                    compte_valides_apres ← compte_valides_apres + 1
+
+        SI compte_valides_apres == 0:
+            RETOURNER {"possible": False, "raison": "dernier_valide"}
+
+        RETOURNER {"possible": True, "raison": None}
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : peut_retirer
+    # -----------------------------------------------------------------
+    #
+    # Vérifie si un Pokémon du stockage peut être ajouté à l'équipe.
+    #
+    # Condition : l'équipe n'est pas pleine (moins de 6).
+    #
+    # index_stockage : l'index du Pokémon dans le stockage
+    #
+    # Renvoie un dictionnaire : {"possible": bool, "raison": string ou None}
+
+    MÉTHODE peut_retirer(self, index_stockage):
+        # Vérifier l'index
+        SI index_stockage < 0 OU index_stockage >= self.storage.taille:
+            RETOURNER {"possible": False, "raison": "index_invalide"}
+
+        # Vérifier que l'équipe a de la place
+        SI self.team.est_pleine:
+            RETOURNER {"possible": False, "raison": "equipe_pleine"}
+
+        RETOURNER {"possible": True, "raison": None}
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : peut_echanger
+    # -----------------------------------------------------------------
+    #
+    # Vérifie si on peut échanger un Pokémon de l'équipe avec un
+    # du stockage.
+    #
+    # L'échange c'est un dépôt + retrait simultané. La taille de
+    # l'équipe change pas (on en retire un, on en ajoute un).
+    # Mais il faut quand même vérifier la règle du Pokémon valide :
+    # si on retire le seul Pokémon valide de l'équipe et que celui
+    # qu'on récupère du stockage est KO, l'équipe aurait 0 valide.
+    #
+    # index_equipe : le Pokémon de l'équipe qu'on dépose
+    # index_stockage : le Pokémon du stockage qu'on récupère
+
+    MÉTHODE peut_echanger(self, index_equipe, index_stockage):
+        # Vérifier les index
+        SI index_equipe < 0 OU index_equipe >= self.team.taille:
+            RETOURNER {"possible": False, "raison": "index_equipe_invalide"}
+
+        SI index_stockage < 0 OU index_stockage >= self.storage.taille:
+            RETOURNER {"possible": False, "raison": "index_stockage_invalide"}
+
+        # Simuler l'échange pour vérifier la règle du valide
+        pokemon_sortant ← self.team.get_pokemon(index_equipe)
+        pokemon_entrant ← self.storage.get_pokemon(index_stockage)
+
+        # Compter les valides après l'échange
+        # = (valides actuels) - (1 si le sortant est valide) + (1 si l'entrant est valide)
+        compte_valides_apres ← 0
+
+        POUR i DE 0 À self.team.taille - 1:
+            SI i != index_equipe:
+                SI NOT self.team.get_pokemon(i).est_ko:
+                    compte_valides_apres ← compte_valides_apres + 1
+
+        # Ajouter l'entrant s'il est valide
+        SI NOT pokemon_entrant.est_ko:
+            compte_valides_apres ← compte_valides_apres + 1
+
+        SI compte_valides_apres == 0:
+            RETOURNER {"possible": False, "raison": "aucun_valide_apres_echange"}
+
+        RETOURNER {"possible": True, "raison": None}
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : deposer
+    # -----------------------------------------------------------------
+    #
+    # Transfère un Pokémon de l'équipe vers le stockage.
+    #
+    # Vérifie d'abord que c'est possible (appelle peut_deposer).
+    # Si oui :
+    #   1. Retire le Pokémon de l'équipe
+    #   2. L'ajoute au stockage
+    #
+    # Renvoie un dictionnaire avec le résultat :
+    #   {
+    #       "succes": bool,
+    #       "pokemon": objet Pokemon ou None,
+    #       "raison": string ou None
+    #   }
+    #
+    # index_equipe : l'index du Pokémon dans l'équipe
+
+    MÉTHODE deposer(self, index_equipe):
+        # Vérification
+        check ← self.peut_deposer(index_equipe)
+
+        SI NOT check["possible"]:
+            RETOURNER {
+                "succes": False,
+                "pokemon": None,
+                "raison": check["raison"]
+            }
+
+        # Effectuer le transfert
+        pokemon ← self.team.retirer(index_equipe)
+
+        SI pokemon EST None:
+            # Sécurité : le retrait a échoué (ne devrait pas arriver
+            # vu qu'on a vérifié, mais on est prudent)
+            RETOURNER {
+                "succes": False,
+                "pokemon": None,
+                "raison": "erreur_retrait"
+            }
+
+        self.storage.ajouter(pokemon)
+
+        RETOURNER {
+            "succes": True,
+            "pokemon": pokemon,
+            "raison": None
+        }
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : retirer
+    # -----------------------------------------------------------------
+    #
+    # Transfère un Pokémon du stockage vers l'équipe.
+    #
+    # Vérifie d'abord que c'est possible (appelle peut_retirer).
+    # Si oui :
+    #   1. Retire le Pokémon du stockage
+    #   2. L'ajoute à l'équipe
+    #
+    # Renvoie le même format que deposer().
+    #
+    # index_stockage : l'index du Pokémon dans le stockage
+
+    MÉTHODE retirer_du_stockage(self, index_stockage):
+        # Vérification
+        check ← self.peut_retirer(index_stockage)
+
+        SI NOT check["possible"]:
+            RETOURNER {
+                "succes": False,
+                "pokemon": None,
+                "raison": check["raison"]
+            }
+
+        # Effectuer le transfert
+        pokemon ← self.storage.retirer(index_stockage)
+
+        SI pokemon EST None:
+            RETOURNER {
+                "succes": False,
+                "pokemon": None,
+                "raison": "erreur_retrait"
+            }
+
+        self.team.ajouter(pokemon)
+
+        RETOURNER {
+            "succes": True,
+            "pokemon": pokemon,
+            "raison": None
+        }
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : echanger
+    # -----------------------------------------------------------------
+    #
+    # Échange un Pokémon de l'équipe avec un du stockage.
+    # C'est un dépôt + retrait atomique.
+    #
+    # L'ordre est important :
+    #   1. On retire du stockage d'abord (l'équipe est encore pleine)
+    #   2. On retire de l'équipe ensuite
+    #   3. On ajoute l'ex-stockage à l'équipe
+    #   4. On ajoute l'ex-équipe au stockage
+    #
+    # Pourquoi cet ordre ? Parce que si on retirait de l'équipe d'abord,
+    # Team.retirer() vérifierait la règle du "au moins 1 valide" sans
+    # savoir qu'on va ajouter un Pokémon juste après. Il pourrait
+    # refuser le retrait à tort.
+    #
+    # Du coup on contourne en faisant les opérations manuellement
+    # (sans passer par team.retirer qui a sa propre validation).
+    # On a déjà validé via peut_echanger() que tout est ok.
+    #
+    # Renvoie un dictionnaire :
+    #   {
+    #       "succes": bool,
+    #       "pokemon_depose": objet Pokemon ou None,
+    #       "pokemon_retire": objet Pokemon ou None,
+    #       "raison": string ou None
+    #   }
+
+    MÉTHODE echanger(self, index_equipe, index_stockage):
+        # Vérification
+        check ← self.peut_echanger(index_equipe, index_stockage)
+
+        SI NOT check["possible"]:
+            RETOURNER {
+                "succes": False,
+                "pokemon_depose": None,
+                "pokemon_retire": None,
+                "raison": check["raison"]
+            }
+
+        # Récupérer les références avant de modifier les listes
+        pokemon_equipe ← self.team.get_pokemon(index_equipe)
+        pokemon_stockage ← self.storage.get_pokemon(index_stockage)
+
+        SI pokemon_equipe EST None OU pokemon_stockage EST None:
+            RETOURNER {
+                "succes": False,
+                "pokemon_depose": None,
+                "pokemon_retire": None,
+                "raison": "erreur_acces"
+            }
+
+        # Effectuer l'échange
+        # On manipule les listes internes directement pour éviter
+        # les validations intermédiaires de Team.retirer()
+        # C'est pas idéal en termes d'encapsulation, mais c'est
+        # le compromis pour l'échange atomique.
+        # Alternative : ajouter une méthode team.remplacer(index, nouveau_pokemon)
+        self.storage.retirer(index_stockage)
+        self.team.pokemons[index_equipe] ← pokemon_stockage
+        self.storage.ajouter(pokemon_equipe)
+
+        RETOURNER {
+            "succes": True,
+            "pokemon_depose": pokemon_equipe,
+            "pokemon_retire": pokemon_stockage,
+            "raison": None
+        }
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : soigner_equipe
+    # -----------------------------------------------------------------
+    #
+    # Soigne tous les Pokémon de l'équipe.
+    # C'est un raccourci pour team.soigner_tous().
+    # Appelé par npc_nurse.py ou directement par state_pokemon_center.py.
+    #
+    # En théorie c'est redondant avec npc_nurse.py qui fait déjà
+    # team.soigner_tous(). Mais c'est pratique d'avoir la méthode
+    # ici aussi pour le cas où on soigne depuis l'interface du centre
+    # sans passer par l'infirmière (un bouton "Soigner" dans le PC).
+
+    MÉTHODE soigner_equipe(self):
+        self.team.soigner_tous()
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_resume
+    # -----------------------------------------------------------------
+    #
+    # Renvoie un résumé de l'état actuel pour l'affichage.
+    # Nombre de Pokémon dans l'équipe, dans le stockage,
+    # nombre de KO dans l'équipe, etc.
+    #
+    # Utilisé par state_pokemon_center.py pour les compteurs
+    # affichés en haut de l'écran.
+
+    MÉTHODE get_resume(self):
+        RETOURNER {
+            "equipe_taille": self.team.taille,
+            "equipe_valides": self.team.nombre_valides(),
+            "equipe_ko": len(self.team.get_ko()),
+            "stockage_taille": self.storage.taille,
+            "equipe_pleine": self.team.est_pleine,
+            "stockage_vide": self.storage.est_vide
+        }
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE SPÉCIALE : __str__
+    # -----------------------------------------------------------------
+
+    MÉTHODE __str__(self):
+        RETOURNER "Centre Pokémon — Équipe: {}/{}, Stockage: {} Pokémon".format(
+            self.team.taille, 6, self.storage.taille
+        )
