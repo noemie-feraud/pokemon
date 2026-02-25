@@ -1,0 +1,274 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+#
+# random : pour la chance de miss et la variation aléatoire
+# settings : pour CHANCE_MISS, DEGATS_MINIMUM, BONUS_STAB
+# type_chart : pour obtenir le multiplicateur de type
+#
+# On n'importe PAS day_night_cycle directement. On le reçoit en
+# paramètre depuis combat.py, qui a accès au game_manager.
+
+importer random
+importer CHANCE_MISS, DEGATS_MINIMUM, BONUS_STAB depuis config.settings
+importer obtenir_multiplicateur depuis config.type_chart
+
+
+# =============================================================================
+# FONCTION : calculer_degats
+# =============================================================================
+#
+# C'est LA fonction principale du fichier. Pas besoin d'une classe ici,
+# une fonction suffit : elle reçoit des données, fait un calcul, renvoie
+# un résultat. Pas d'état interne à maintenir.
+#
+# Paramètres :
+#   attaquant : objet Pokemon (celui qui attaque)
+#   defenseur : objet Pokemon (celui qui reçoit l'attaque)
+#   attaque : dictionnaire {"name": ..., "type": ..., "power": ...}
+#   day_night_cycle : objet DayNightCycle (pour la pénalité)
+#   boosts_attaquant : dictionnaire {"attack": 0, "defense": 0}
+#     Les boosts temporaires en pourcentage. {"attack": 25} = +25%.
+#     Par défaut tout à 0 (pas de boost).
+#   boosts_defenseur : même chose pour le défenseur.
+#
+# Renvoie un dictionnaire avec toutes les infos du résultat :
+#   {
+#       "degats": int (les dégâts à infliger),
+#       "a_touche": bool (True si l'attaque a touché),
+#       "est_miss": bool (True si l'attaque a raté),
+#       "multiplicateur_type": float (pour l'affichage),
+#       "est_super_efficace": bool (multiplicateur > 1),
+#       "est_peu_efficace": bool (multiplicateur < 1 et > 0),
+#       "est_immune": bool (multiplicateur == 0),
+#       "est_stab": bool (bonus STAB appliqué)
+#   }
+#
+# Pourquoi renvoyer un dictionnaire et pas juste un int ?
+# Parce que combat_ui.py a besoin de savoir si c'était super efficace,
+# si ça a raté, etc. pour afficher les bons messages. Si on renvoyait
+# juste les dégâts, le code appelant devrait refaire des calculs pour
+# savoir quoi afficher. En renvoyant tout d'un coup, c'est propre.
+
+FONCTION calculer_degats(attaquant, defenseur, attaque, day_night_cycle,
+                         boosts_attaquant=None, boosts_defenseur=None):
+
+    # Valeurs par défaut pour les boosts
+    SI boosts_attaquant EST None:
+        boosts_attaquant ← {"attack": 0, "defense": 0}
+    SI boosts_defenseur EST None:
+        boosts_defenseur ← {"attack": 0, "defense": 0}
+
+    # -----------------------------------------------------------------
+    # ÉTAPE 1 : VÉRIFIER LE MISS
+    # -----------------------------------------------------------------
+    #
+    # On tire un nombre aléatoire entre 0 et 1.
+    # Si c'est en dessous de CHANCE_MISS (0.05 = 5%), l'attaque rate.
+    # On renvoie directement un résultat avec 0 dégâts.
+
+    SI random.random() < CHANCE_MISS:
+        RETOURNER {
+            "degats": 0,
+            "a_touche": False,
+            "est_miss": True,
+            "multiplicateur_type": 1.0,
+            "est_super_efficace": False,
+            "est_peu_efficace": False,
+            "est_immune": False,
+            "est_stab": False
+        }
+
+
+    # -----------------------------------------------------------------
+    # ÉTAPE 2 : RÉCUPÉRER LES STATS AVEC BOOSTS
+    # -----------------------------------------------------------------
+    #
+    # On prend la stat de base du Pokémon et on applique le boost.
+    # Un boost de 25 = +25% → on multiplie par 1.25.
+    #
+    # Exemple : attaque = 80, boost_attack = 25
+    #   → attaque_effective = 80 × (1 + 25/100) = 80 × 1.25 = 100
+
+    stat_attaque ← attaquant.attaque × (1 + boosts_attaquant["attack"] / 100)
+    stat_defense ← defenseur.defense × (1 + boosts_defenseur["defense"] / 100)
+
+    # Sécurité : la défense peut pas être 0 (division par zéro)
+    SI stat_defense < 1:
+        stat_defense ← 1
+
+
+    # -----------------------------------------------------------------
+    # ÉTAPE 3 : CALCUL DES DÉGÂTS BRUTS
+    # -----------------------------------------------------------------
+    #
+    # Formule simplifiée :
+    #   dégâts_bruts = (puissance × attaque) / (défense × 0.5)
+    #
+    # Le facteur 0.5 sur la défense rend les combats plus dynamiques
+    # (la défense compte moins que dans un ratio 1:1).
+    #
+    # La puissance de l'attaque vient du dictionnaire de l'attaque.
+
+    puissance ← attaque["power"]
+
+    degats_bruts ← (puissance × stat_attaque) / (stat_defense × 0.5)
+
+
+    # -----------------------------------------------------------------
+    # ÉTAPE 4 : MULTIPLICATEUR DE TYPE
+    # -----------------------------------------------------------------
+    #
+    # On regarde l'efficacité du type de l'attaque contre chaque type
+    # du défenseur. Si le défenseur a 2 types, on multiplie les deux
+    # multiplicateurs ensemble.
+    #
+    # Exemple : attaque Feu contre Pokémon Plante/Poison
+    #   → Feu vs Plante = ×2
+    #   → Feu vs Poison = ×1
+    #   → total = 2 × 1 = ×2
+    #
+    # Exemple : attaque Sol contre Pokémon Eau/Vol
+    #   → Sol vs Eau = ×2
+    #   → Sol vs Vol = ×0 (immunité)
+    #   → total = 2 × 0 = ×0 (immunité l'emporte)
+
+    type_attaque ← attaque["type"]
+    multiplicateur_type ← 1.0
+
+    POUR CHAQUE type_defenseur DANS defenseur.types:
+        mult ← obtenir_multiplicateur(type_attaque, type_defenseur)
+        multiplicateur_type ← multiplicateur_type × mult
+
+
+    # -----------------------------------------------------------------
+    # ÉTAPE 5 : VÉRIFIER L'IMMUNITÉ
+    # -----------------------------------------------------------------
+    #
+    # Si le multiplicateur est 0, le défenseur est immunisé.
+    # On renvoie 0 dégâts, le minimum de 1 ne s'applique PAS.
+    # "Ça n'affecte pas le Pokémon adverse..."
+
+    SI multiplicateur_type == 0:
+        RETOURNER {
+            "degats": 0,
+            "a_touche": True,
+            "est_miss": False,
+            "multiplicateur_type": 0,
+            "est_super_efficace": False,
+            "est_peu_efficace": False,
+            "est_immune": True,
+            "est_stab": False
+        }
+
+
+    # -----------------------------------------------------------------
+    # ÉTAPE 6 : BONUS STAB (Same Type Attack Bonus)
+    # -----------------------------------------------------------------
+    #
+    # Si le type de l'attaque est le même qu'un des types de l'attaquant,
+    # on applique un bonus. C'est le STAB.
+    #
+    # Exemple : un Pokémon Feu qui utilise Flammèche (type Feu)
+    #   → STAB s'applique → dégâts × 1.5
+    #
+    # Un Pokémon Feu qui utilise Griffe (type Normal)
+    #   → pas de STAB
+    #
+    # BONUS_STAB vaut 1.5 dans settings (50% de bonus).
+    # C'est un Should Have. Si on a pas le temps, on met BONUS_STAB à 1.0
+    # dans settings et le code marche quand même (pas de bonus).
+
+    est_stab ← False
+    SI type_attaque EST dans attaquant.types:
+        est_stab ← True
+
+    stab_mult ← 1.0
+    SI est_stab:
+        stab_mult ← BONUS_STAB
+
+
+    # -----------------------------------------------------------------
+    # ÉTAPE 7 : PÉNALITÉ JOUR/NUIT
+    # -----------------------------------------------------------------
+    #
+    # On demande au cycle jour/nuit si l'attaquant est pénalisé.
+    # Un Pokémon diurne qui combat la nuit → coefficient 0.80.
+    # Un Pokémon nocturne qui combat le jour → coefficient 0.80.
+    # Sinon → 1.0 (pas de pénalité).
+    #
+    # Si day_night_cycle est None (pas encore implémenté ou désactivé),
+    # on met 1.0.
+
+    penalite_dn ← 1.0
+    SI day_night_cycle EST NOT None:
+        penalite_dn ← day_night_cycle.get_penalty(attaquant.day_night)
+
+
+    # -----------------------------------------------------------------
+    # ÉTAPE 8 : VARIATION ALÉATOIRE
+    # -----------------------------------------------------------------
+    #
+    # Un facteur entre 0.85 et 1.0 pour que les dégâts varient un peu.
+    # C'est comme dans les vrais Pokémon (entre 0.85 et 1.00).
+    #
+    # Ça veut dire que la même attaque peut faire entre 85% et 100%
+    # de ses dégâts calculés. C'est une petite variation mais elle
+    # rend chaque coup un peu différent.
+
+    variation ← random.uniform(0.85, 1.0)
+
+
+    # -----------------------------------------------------------------
+    # ÉTAPE 9 : CALCUL FINAL
+    # -----------------------------------------------------------------
+    #
+    # On multiplie tout ensemble.
+
+    degats_finaux ← degats_bruts × multiplicateur_type × stab_mult × penalite_dn × variation
+
+    # Arrondir à l'entier (les PV sont des entiers)
+    degats_finaux ← int(degats_finaux)
+
+    # Appliquer le minimum de dégâts
+    # (seulement si le multiplicateur est > 0, l'immunité a déjà été gérée)
+    SI degats_finaux < DEGATS_MINIMUM:
+        degats_finaux ← DEGATS_MINIMUM
+
+
+    # -----------------------------------------------------------------
+    # ÉTAPE 10 : CONSTRUIRE LE RÉSULTAT
+    # -----------------------------------------------------------------
+    #
+    # On emballe tout dans un dictionnaire pour que combat.py
+    # et combat_ui.py aient toutes les infos nécessaires.
+
+    RETOURNER {
+        "degats": degats_finaux,
+        "a_touche": True,
+        "est_miss": False,
+        "multiplicateur_type": multiplicateur_type,
+        "est_super_efficace": multiplicateur_type > 1.0,
+        "est_peu_efficace": multiplicateur_type < 1.0,
+        "est_immune": False,
+        "est_stab": est_stab
+    }
+
+
+# =============================================================================
+# FONCTION : calculer_xp_gagnee
+# =============================================================================
+#
+# Calcule l'XP gagnée après avoir battu un Pokémon.
+# On la met ici plutôt que dans combat.py parce que c'est un calcul
+# pur, comme les dégâts.
+#
+# Formule : niveau_adverse × 10
+#
+# Un Pokémon de niveau 5 donne 50 XP, un de niveau 20 donne 200 XP.
+# Battre des Pokémon plus forts rapporte plus. Simple et efficace.
+#
+# pokemon_vaincu : le Pokémon qui a été mis KO
+
+FONCTION calculer_xp_gagnee(pokemon_vaincu):
+    RETOURNER pokemon_vaincu.niveau × 10
