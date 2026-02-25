@@ -1,0 +1,383 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+
+importer pygame
+importer State depuis states.state
+importer Pokemon depuis entities.pokemon
+importer (SCREEN_WIDTH, SCREEN_HEIGHT, STARTER_IDS) depuis config.settings
+
+
+# =============================================================================
+# CONSTANTES LOCALES
+# =============================================================================
+
+MODE_CHOIX ← "choix"
+MODE_CONFIRMATION ← "confirmation"
+NIVEAU_STARTER ← 5
+
+
+# =============================================================================
+# CLASSE STATE STARTER SELECT
+# =============================================================================
+#
+# Écran de choix du starter. Pushé par le callback du NpcProfessor.
+# Non transparent — écran dédié avec fond propre.
+
+CLASSE StateStarterSelect (hérite de State):
+
+    transparent ← False
+
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+    #
+    # game_manager : référence vers Game
+    # npc_professor : référence vers le professeur (pour poser le flag)
+
+    MÉTHODE __init__(self, game_manager, npc_professor=None):
+        super().__init__(game_manager)
+
+        self.npc_professor ← npc_professor
+
+        # --- POLICES ---
+        self.font_titre ← pygame.font.Font(None, 38)
+        self.font_nom ← pygame.font.Font(None, 28)
+        self.font_stats ← pygame.font.Font(None, 22)
+        self.font_info ← pygame.font.Font(None, 20)
+        self.font_confirm ← pygame.font.Font(None, 30)
+
+        # --- CRÉER LES 3 STARTERS ---
+        # STARTER_IDS est une liste de 3 IDs de Pokémon dans settings.py
+        # Ex: [1, 4, 7] pour Bulbizarre, Salamèche, Carapuce
+        self.starters ← []
+        POUR CHAQUE pokemon_id DANS STARTER_IDS:
+            pokemon ← Pokemon.from_data(pokemon_id, NIVEAU_STARTER)
+            self.starters.ajouter(pokemon)
+
+        # --- NAVIGATION ---
+        self.selection_index ← 0
+
+        # --- MODE ---
+        self.mode ← MODE_CHOIX
+        self.confirm_index ← 0    # 0 = Oui, 1 = Non
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : on_enter
+    # -----------------------------------------------------------------
+
+    MÉTHODE on_enter(self):
+        self.game_manager.audio_manager.play_music("menu")
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : handle_events
+    # -----------------------------------------------------------------
+
+    MÉTHODE handle_events(self, events):
+        POUR CHAQUE event DANS events:
+            SI event.type != pygame.KEYDOWN:
+                CONTINUER
+
+            SI self.mode == MODE_CHOIX:
+                self._handle_choix(event)
+            SINON SI self.mode == MODE_CONFIRMATION:
+                self._handle_confirmation(event)
+
+
+    # -----------------------------------------------------------------
+    # HANDLE CHOIX
+    # -----------------------------------------------------------------
+
+    MÉTHODE _handle_choix(self, event):
+
+        # --- NAVIGUER ---
+        SI event.key == pygame.K_LEFT:
+            ancien ← self.selection_index
+            self.selection_index ← max(0, self.selection_index - 1)
+            SI self.selection_index != ancien:
+                self.game_manager.audio_manager.play_sfx("menu_select")
+
+        SINON SI event.key == pygame.K_RIGHT:
+            ancien ← self.selection_index
+            self.selection_index ← min(2, self.selection_index + 1)
+            SI self.selection_index != ancien:
+                self.game_manager.audio_manager.play_sfx("menu_select")
+
+        # --- CONFIRMER ---
+        SINON SI event.key EST dans [pygame.K_SPACE, pygame.K_RETURN]:
+            self.mode ← MODE_CONFIRMATION
+            self.confirm_index ← 0    # défaut sur "Oui"
+
+
+    # -----------------------------------------------------------------
+    # HANDLE CONFIRMATION
+    # -----------------------------------------------------------------
+
+    MÉTHODE _handle_confirmation(self, event):
+
+        # --- NAVIGUER OUI / NON ---
+        SI event.key == pygame.K_LEFT:
+            self.confirm_index ← 0
+        SINON SI event.key == pygame.K_RIGHT:
+            self.confirm_index ← 1
+
+        # --- ANNULER ---
+        SINON SI event.key == pygame.K_ESCAPE:
+            self.mode ← MODE_CHOIX
+
+        # --- VALIDER ---
+        SINON SI event.key EST dans [pygame.K_SPACE, pygame.K_RETURN]:
+            SI self.confirm_index == 0:
+                # OUI → donner le starter
+                self._donner_starter()
+            SINON:
+                # NON → retour au choix
+                self.mode ← MODE_CHOIX
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _donner_starter
+    # -----------------------------------------------------------------
+    #
+    # Ajoute le Pokémon choisi à l'équipe du joueur.
+    # Marque le professeur comme ayant donné le starter.
+    # Pop l'état.
+
+    MÉTHODE _donner_starter(self):
+        player ← self.game_manager.player
+        pokemon_choisi ← self.starters[self.selection_index]
+
+        # Ajouter à l'équipe
+        player.team.ajouter(pokemon_choisi)
+
+        # Marquer le starter comme donné
+        player.starter_recu ← True
+        SI self.npc_professor EST NOT None:
+            self.npc_professor.starter_donne ← True
+
+        # Enregistrer dans le pokédex
+        player.pokedex.enregistrer(pokemon_choisi)
+
+        # SFX
+        self.game_manager.audio_manager.play_sfx("levelup")
+
+        # Pop
+        self.game_manager.state_manager.pop()
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : update
+    # -----------------------------------------------------------------
+
+    MÉTHODE update(self, dt):
+        passer    # pas d'animation
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : render
+    # -----------------------------------------------------------------
+
+    MÉTHODE render(self, screen):
+        # --- FOND ---
+        screen.fill((30, 35, 55))
+
+        # --- TITRE ---
+        self._draw_titre(screen)
+
+        # --- LES 3 CARTES DE STARTERS ---
+        self._draw_starters(screen)
+
+        # --- CONFIRMATION (si mode confirmation) ---
+        SI self.mode == MODE_CONFIRMATION:
+            self._draw_confirmation(screen)
+
+        # --- CONTRÔLES ---
+        self._draw_controles(screen)
+
+
+    # -----------------------------------------------------------------
+    # RENDU : TITRE
+    # -----------------------------------------------------------------
+
+    MÉTHODE _draw_titre(self, screen):
+        texte ← "Choisis ton premier Pokémon !"
+        surface ← self.font_titre.render(texte, True, (255, 255, 255))
+        pos_x ← (SCREEN_WIDTH - surface.get_width()) / 2
+        screen.blit(surface, (pos_x, 40))
+
+
+    # -----------------------------------------------------------------
+    # RENDU : LES 3 STARTERS
+    # -----------------------------------------------------------------
+    #
+    # Trois cadres côte à côte, chacun contenant le sprite, le nom,
+    # le type et les stats du Pokémon.
+
+    MÉTHODE _draw_starters(self, screen):
+        cadre_largeur ← 240
+        cadre_hauteur ← 380
+        espacement ← 40
+
+        # Centrer les 3 cadres
+        total_largeur ← 3 × cadre_largeur + 2 × espacement
+        debut_x ← (SCREEN_WIDTH - total_largeur) / 2
+        debut_y ← 100
+
+        POUR i, pokemon DANS enumerate(self.starters):
+            x ← debut_x + i × (cadre_largeur + espacement)
+            y ← debut_y
+
+            # --- CADRE ---
+            SI i == self.selection_index:
+                couleur_bordure ← (255, 220, 50)    # doré
+                epaisseur ← 4
+            SINON:
+                couleur_bordure ← (80, 80, 120)
+                epaisseur ← 2
+
+            # Fond du cadre
+            fond_cadre ← pygame.Surface((cadre_largeur, cadre_hauteur))
+            fond_cadre.fill((40, 40, 65))
+            screen.blit(fond_cadre, (x, y))
+            pygame.draw.rect(screen, couleur_bordure,
+                (x, y, cadre_largeur, cadre_hauteur), epaisseur)
+
+            # --- SPRITE (placeholder) ---
+            sprite_rect ← pygame.Rect(x + 60, y + 20, 120, 120)
+            pygame.draw.rect(screen, (80, 80, 120), sprite_rect)
+
+            # Essayer de charger le vrai sprite
+            ESSAYER:
+                sprite ← pokemon.get_sprite_front()
+                SI sprite EST NOT None:
+                    sprite_scaled ← pygame.transform.scale(sprite, (120, 120))
+                    screen.blit(sprite_scaled, (x + 60, y + 20))
+            EN CAS D'ERREUR:
+                # Le placeholder gris reste visible
+                texte_ph ← "?"
+                surface_ph ← self.font_titre.render(texte_ph, True, (150, 150, 150))
+                screen.blit(surface_ph, (x + 108, y + 55))
+
+            # --- NOM ---
+            surface_nom ← self.font_nom.render(pokemon.nom, True, (255, 255, 255))
+            nom_x ← x + (cadre_largeur - surface_nom.get_width()) / 2
+            screen.blit(surface_nom, (nom_x, y + 155))
+
+            # --- TYPE ---
+            types_texte ← "Type: " + " / ".join(pokemon.types)
+            surface_type ← self.font_stats.render(types_texte, True, (180, 200, 255))
+            type_x ← x + (cadre_largeur - surface_type.get_width()) / 2
+            screen.blit(surface_type, (type_x, y + 185))
+
+            # --- STATS ---
+            stats ← [
+                ("PV", pokemon.pv_max),
+                ("ATK", pokemon.attaque),
+                ("DEF", pokemon.defense),
+                ("VIT", pokemon.vitesse)
+            ]
+
+            POUR j, (label, valeur) DANS enumerate(stats):
+                stat_y ← y + 220 + j × 28
+
+                # Label
+                surface_label ← self.font_stats.render(label, True, (180, 180, 180))
+                screen.blit(surface_label, (x + 25, stat_y))
+
+                # Valeur
+                surface_val ← self.font_stats.render(str(valeur), True, (255, 255, 255))
+                screen.blit(surface_val, (x + 80, stat_y))
+
+                # Barre visuelle (proportionnelle, max ~80)
+                barre_x ← x + 115
+                barre_largeur_max ← 100
+                ratio ← min(1.0, valeur / 80)
+                barre_remplissage ← int(barre_largeur_max × ratio)
+
+                pygame.draw.rect(screen, (50, 50, 50),
+                    (barre_x, stat_y + 4, barre_largeur_max, 10))
+                SI barre_remplissage > 0:
+                    # Couleur selon la valeur
+                    SI ratio > 0.7:
+                        couleur_stat ← (100, 255, 100)
+                    SINON SI ratio > 0.4:
+                        couleur_stat ← (255, 255, 100)
+                    SINON:
+                        couleur_stat ← (255, 100, 100)
+                    pygame.draw.rect(screen, couleur_stat,
+                        (barre_x, stat_y + 4, barre_remplissage, 10))
+
+            # --- ATTAQUES ---
+            atk_y ← y + 340
+            POUR k, attaque DANS enumerate(pokemon.attaques):
+                texte_atk ← "• {} ({})".format(attaque.nom, attaque.type_element)
+                surface_atk ← self.font_info.render(texte_atk, True, (170, 170, 200))
+                screen.blit(surface_atk, (x + 20, atk_y + k × 18))
+
+
+    # -----------------------------------------------------------------
+    # RENDU : CONFIRMATION
+    # -----------------------------------------------------------------
+    #
+    # Overlay avec la question "Tu choisis [nom] ?" et Oui / Non.
+
+    MÉTHODE _draw_confirmation(self, screen):
+        pokemon ← self.starters[self.selection_index]
+
+        # Overlay sombre
+        overlay ← pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+        overlay.fill((0, 0, 0))
+        overlay.set_alpha(150)
+        screen.blit(overlay, (0, 0))
+
+        # Cadre de confirmation
+        cadre_largeur ← 450
+        cadre_hauteur ← 120
+        cadre_x ← (SCREEN_WIDTH - cadre_largeur) / 2
+        cadre_y ← (SCREEN_HEIGHT - cadre_hauteur) / 2
+
+        fond ← pygame.Surface((cadre_largeur, cadre_hauteur))
+        fond.fill((35, 35, 60))
+        screen.blit(fond, (cadre_x, cadre_y))
+        pygame.draw.rect(screen, (255, 220, 50),
+            (cadre_x, cadre_y, cadre_largeur, cadre_hauteur), 3)
+
+        # Question
+        texte ← "Tu choisis {} ?".format(pokemon.nom)
+        surface_q ← self.font_confirm.render(texte, True, (255, 255, 255))
+        q_x ← cadre_x + (cadre_largeur - surface_q.get_width()) / 2
+        screen.blit(surface_q, (q_x, cadre_y + 20))
+
+        # Oui / Non
+        options ← ["Oui", "Non"]
+        POUR i, option DANS enumerate(options):
+            SI i == self.confirm_index:
+                couleur ← (255, 220, 50)
+                prefixe ← "> "
+            SINON:
+                couleur ← (180, 180, 180)
+                prefixe ← "  "
+
+            surface_opt ← self.font_confirm.render(
+                prefixe + option, True, couleur)
+
+            opt_x ← cadre_x + 120 + i × 150
+            screen.blit(surface_opt, (opt_x, cadre_y + 70))
+
+
+    # -----------------------------------------------------------------
+    # RENDU : CONTRÔLES
+    # -----------------------------------------------------------------
+
+    MÉTHODE _draw_controles(self, screen):
+        SI self.mode == MODE_CHOIX:
+            texte ← "[←→] Choisir  [Entrée] Confirmer"
+        SINON:
+            texte ← "[←→] Oui/Non  [Entrée] Valider  [Échap] Retour"
+
+        surface ← self.font_info.render(texte, True, (120, 120, 120))
+        pos_x ← (SCREEN_WIDTH - surface.get_width()) / 2
+        screen.blit(surface, (pos_x, SCREEN_HEIGHT - 40))
