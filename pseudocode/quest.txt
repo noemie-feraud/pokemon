@@ -1,0 +1,468 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+#
+# json : pour charger quests.json
+# settings : pour le chemin du fichier
+
+importer json
+importer FICHIER_QUESTS depuis config.settings
+
+
+# =============================================================================
+# CLASSE QUEST MANAGER
+# =============================================================================
+#
+# Système central de gestion des quêtes.
+# Charge les données, suit l'état, vérifie les conditions, donne les récompenses.
+
+CLASSE QuestManager:
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+    #
+    # Charge toutes les quêtes depuis quests.json.
+    # Les indexe par id pour un accès rapide.
+    # L'état des quêtes (active, complétée) est stocké dans le Player,
+    # pas ici. Le QuestManager est stateless — il lit l'état du Player
+    # à chaque interrogation.
+    #
+    # Pourquoi stateless ? Parce que comme ça on n'a pas besoin de
+    # synchroniser deux sources de vérité. Le Player est la seule
+    # source pour l'état des quêtes. Le QuestManager fournit les
+    # données et la logique de vérification.
+
+    MÉTHODE __init__(self):
+        self.quests ← dictionnaire vide    # {quest_id: quest_data}
+
+        ESSAYER:
+            ouvrir FICHIER_QUESTS en lecture
+            quests_data ← json.load(fichier)
+
+            POUR CHAQUE quest DANS quests_data:
+                self.quests[quest["id"]] ← quest
+
+        EN CAS D'ERREUR:
+            afficher warning ("Impossible de charger les quêtes")
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_quest
+    # -----------------------------------------------------------------
+    #
+    # Renvoie les données d'une quête par son id.
+    # Renvoie None si l'id existe pas.
+
+    MÉTHODE get_quest(self, quest_id):
+        RETOURNER self.quests.get(quest_id, None)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_quest_by_npc
+    # -----------------------------------------------------------------
+    #
+    # Renvoie la quête associée à un PNJ par son npc_id.
+    # Utilisé par npc_quest.py pour trouver sa quête.
+    # Renvoie None si aucune quête n'est associée à ce PNJ.
+
+    MÉTHODE get_quest_by_npc(self, npc_id):
+        POUR CHAQUE quest DANS self.quests.values():
+            SI quest["npc_id"] == npc_id:
+                RETOURNER quest
+        RETOURNER None
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_etat
+    # -----------------------------------------------------------------
+    #
+    # Détermine l'état actuel d'une quête pour un joueur donné.
+    #
+    # On regarde dans les listes du joueur :
+    #   - quests_completed → "done" (récompensé)
+    #   - quests_active + conditions remplies → "complete"
+    #   - quests_active + conditions pas remplies → "active"
+    #   - ni active ni complétée → "available"
+    #
+    # quest_id : l'id de la quête
+    # player : l'objet Player
+    #
+    # Renvoie un string : "available", "active", "complete", ou "done"
+
+    MÉTHODE get_etat(self, quest_id, player):
+        SI quest_id N'EST PAS dans self.quests:
+            RETOURNER "done"    # quête inconnue = rien à faire
+
+        # Déjà récompensé ?
+        SI quest_id EST dans player.quests_completed:
+            RETOURNER "done"
+
+        # En cours ?
+        SI quest_id EST dans player.quests_active:
+            SI self.verifier_conditions(quest_id, player):
+                RETOURNER "complete"
+            RETOURNER "active"
+
+        # Pas encore commencé
+        RETOURNER "available"
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : activer
+    # -----------------------------------------------------------------
+    #
+    # Active une quête pour le joueur (passe de "available" à "active").
+    # Ajoute l'id dans player.quests_active.
+    #
+    # Renvoie True si l'activation a réussi, False sinon.
+
+    MÉTHODE activer(self, quest_id, player):
+        SI quest_id N'EST PAS dans self.quests:
+            RETOURNER False
+
+        SI quest_id EST dans player.quests_active:
+            RETOURNER False    # déjà active
+
+        SI quest_id EST dans player.quests_completed:
+            RETOURNER False    # déjà terminée
+
+        ajouter quest_id à player.quests_active
+        RETOURNER True
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : verifier_conditions
+    # -----------------------------------------------------------------
+    #
+    # Vérifie si les conditions d'une quête sont remplies.
+    # Délègue à des méthodes spécialisées selon le type de quête.
+    #
+    # quest_id : l'id de la quête
+    # player : l'objet Player
+    #
+    # Renvoie True si les conditions sont remplies, False sinon.
+
+    MÉTHODE verifier_conditions(self, quest_id, player):
+        quest ← self.quests.get(quest_id, None)
+
+        SI quest EST None:
+            RETOURNER False
+
+        type_quest ← quest["type"]
+
+        SI type_quest == "capture_type":
+            RETOURNER self._check_capture_type(quest, player)
+
+        SI type_quest == "level_up":
+            RETOURNER self._check_level_up(quest, player)
+
+        SI type_quest == "defeat_trainers":
+            RETOURNER self._check_defeat_trainers(quest, player)
+
+        SI type_quest == "exploration":
+            RETOURNER self._check_exploration(quest, player)
+
+        RETOURNER False
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _check_capture_type
+    # -----------------------------------------------------------------
+    #
+    # Vérifie "capturer X Pokémon d'un type donné".
+    # Compte dans l'équipe + le stockage.
+
+    MÉTHODE _check_capture_type(self, quest, player):
+        type_cible ← quest["target_type"]
+        nombre_cible ← quest["target_count"]
+
+        compteur ← 0
+
+        POUR CHAQUE pokemon DANS player.team:
+            SI type_cible EST dans pokemon.types:
+                compteur ← compteur + 1
+
+        POUR CHAQUE pokemon DANS player.storage:
+            SI type_cible EST dans pokemon.types:
+                compteur ← compteur + 1
+
+        RETOURNER compteur >= nombre_cible
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _check_level_up
+    # -----------------------------------------------------------------
+    #
+    # Vérifie "monter un Pokémon au niveau X".
+    # Un seul Pokémon dans l'équipe au bon niveau suffit.
+
+    MÉTHODE _check_level_up(self, quest, player):
+        niveau_cible ← quest["target_level"]
+
+        POUR CHAQUE pokemon DANS player.team:
+            SI pokemon.niveau >= niveau_cible:
+                RETOURNER True
+
+        RETOURNER False
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _check_defeat_trainers
+    # -----------------------------------------------------------------
+    #
+    # Vérifie "battre X dresseurs".
+    # Compte le nombre total de dresseurs battus.
+
+    MÉTHODE _check_defeat_trainers(self, quest, player):
+        nombre_cible ← quest["target_count"]
+        RETOURNER len(player.trainers_beaten) >= nombre_cible
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _check_exploration
+    # -----------------------------------------------------------------
+    #
+    # Vérifie "trouver un objet caché" ou "visiter un endroit".
+    # On utilise un flag dans les données du joueur.
+    # Le flag est mis à True par state_exploration.py quand le
+    # joueur interagit avec l'objet ou entre dans la zone.
+    #
+    # Pour l'instant c'est simplifié : on vérifie si un flag
+    # spécifique existe dans une liste du joueur.
+
+    MÉTHODE _check_exploration(self, quest, player):
+        flag_id ← quest.get("flag_id", None)
+
+        SI flag_id EST None:
+            RETOURNER False
+
+        # On réutilise quests_completed pour stocker les flags d'exploration
+        # ou on pourrait avoir une liste dédiée player.exploration_flags
+        # Pour l'instant on simplifie
+        RETOURNER flag_id EST dans player.quests_active
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_progression
+    # -----------------------------------------------------------------
+    #
+    # Renvoie la progression actuelle d'une quête sous forme de string.
+    # Utilisé par npc_quest.py pour remplacer les placeholders
+    # dans les dialogues.
+    #
+    # Exemples :
+    #   capture_type → "2/3"
+    #   level_up → "Niv.15/20"
+    #   defeat_trainers → "4/5"
+    #
+    # quest_id : l'id de la quête
+    # player : l'objet Player
+
+    MÉTHODE get_progression(self, quest_id, player):
+        quest ← self.quests.get(quest_id, None)
+
+        SI quest EST None:
+            RETOURNER "?"
+
+        type_quest ← quest["type"]
+
+        SI type_quest == "capture_type":
+            type_cible ← quest["target_type"]
+            compteur ← 0
+            POUR CHAQUE pokemon DANS player.team:
+                SI type_cible EST dans pokemon.types:
+                    compteur ← compteur + 1
+            POUR CHAQUE pokemon DANS player.storage:
+                SI type_cible EST dans pokemon.types:
+                    compteur ← compteur + 1
+            RETOURNER "{}/{}".format(compteur, quest["target_count"])
+
+        SI type_quest == "level_up":
+            niveau_max ← 0
+            POUR CHAQUE pokemon DANS player.team:
+                SI pokemon.niveau > niveau_max:
+                    niveau_max ← pokemon.niveau
+            RETOURNER "Niv.{}/{}".format(niveau_max, quest["target_level"])
+
+        SI type_quest == "defeat_trainers":
+            RETOURNER "{}/{}".format(
+                len(player.trainers_beaten),
+                quest["target_count"]
+            )
+
+        SI type_quest == "exploration":
+            RETOURNER "En cours..."
+
+        RETOURNER "?"
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : donner_recompense
+    # -----------------------------------------------------------------
+    #
+    # Donne la récompense d'une quête au joueur.
+    # Déplace la quête de "active" à "completed".
+    #
+    # Vérifie d'abord que la quête est bien dans l'état "complete"
+    # (conditions remplies mais pas encore récompensé).
+    #
+    # quest_id : l'id de la quête
+    # player : l'objet Player
+    # audio_manager : pour jouer un son de récompense (optionnel)
+    #
+    # Renvoie un dictionnaire :
+    #   {
+    #       "succes": bool,
+    #       "reward_type": "credits" ou "item",
+    #       "reward_amount": int,
+    #       "raison_echec": string ou None
+    #   }
+
+    MÉTHODE donner_recompense(self, quest_id, player, audio_manager=None):
+        quest ← self.quests.get(quest_id, None)
+
+        SI quest EST None:
+            RETOURNER {
+                "succes": False,
+                "reward_type": None,
+                "reward_amount": 0,
+                "raison_echec": "quete_inconnue"
+            }
+
+        # Vérifier l'état
+        etat ← self.get_etat(quest_id, player)
+
+        SI etat != "complete":
+            RETOURNER {
+                "succes": False,
+                "reward_type": None,
+                "reward_amount": 0,
+                "raison_echec": "pas_completee"
+            }
+
+        # Récupérer les infos de récompense
+        reward ← quest.get("reward", {})
+        reward_type ← reward.get("type", "credits")
+        reward_amount ← reward.get("amount", 0)
+
+        # Donner la récompense
+        SI reward_type == "credits":
+            player.credits ← player.credits + reward_amount
+
+        SI reward_type == "item":
+            item_id ← reward.get("item_id")
+            SI item_id EST NOT None:
+                player.inventory.ajouter(item_id, reward_amount)
+
+        # Jouer un son
+        SI audio_manager EST NOT None:
+            audio_manager.play_sfx("levelup")
+
+        # Mettre à jour l'état
+        SI quest_id EST dans player.quests_active:
+            retirer quest_id de player.quests_active
+
+        SI quest_id N'EST PAS dans player.quests_completed:
+            ajouter quest_id à player.quests_completed
+
+        RETOURNER {
+            "succes": True,
+            "reward_type": reward_type,
+            "reward_amount": reward_amount,
+            "raison_echec": None
+        }
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_all_quests
+    # -----------------------------------------------------------------
+    #
+    # Renvoie toutes les quêtes du jeu.
+    # Utilisé pour un éventuel journal de quêtes.
+
+    MÉTHODE get_all_quests(self):
+        RETOURNER liste de self.quests.values()
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_active_quests
+    # -----------------------------------------------------------------
+    #
+    # Renvoie les quêtes actuellement actives pour un joueur.
+    # Pratique pour un affichage "Quêtes en cours" dans le HUD
+    # ou un journal.
+    #
+    # player : l'objet Player
+
+    MÉTHODE get_active_quests(self, player):
+        actives ← liste vide
+
+        POUR CHAQUE quest_id DANS player.quests_active:
+            quest ← self.quests.get(quest_id, None)
+            SI quest EST NOT None:
+                ajouter quest à actives
+
+        RETOURNER actives
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_dialogues
+    # -----------------------------------------------------------------
+    #
+    # Renvoie les dialogues d'une quête pour un état donné.
+    # Remplace les placeholders ({progress}, {target}, {reward})
+    # par les valeurs actuelles.
+    #
+    # C'est cette méthode que npc_quest.py appelle pour récupérer
+    # les lignes de dialogue à afficher.
+    #
+    # quest_id : l'id de la quête
+    # etat : "available", "active", "complete", ou "done"
+    # player : l'objet Player (pour calculer la progression)
+
+    MÉTHODE get_dialogues(self, quest_id, etat, player):
+        quest ← self.quests.get(quest_id, None)
+
+        SI quest EST None:
+            RETOURNER ["..."]
+
+        dialogues ← quest.get("dialogues", {})
+
+        # Choisir le bon jeu de dialogues selon l'état
+        SI etat == "available":
+            lignes ← dialogues.get("propose", ["J'ai un défi pour toi !"])
+
+        SINON SI etat == "active":
+            lignes ← dialogues.get("active", ["Continue, t'y es presque !"])
+
+        SINON SI etat == "complete":
+            lignes ← dialogues.get("complete", ["Bravo, t'as réussi !"])
+
+        SINON SI etat == "done":
+            lignes ← dialogues.get("done", ["T'as déjà relevé mon défi !"])
+
+        SINON:
+            lignes ← ["..."]
+
+        # Remplacer les placeholders
+        progression ← self.get_progression(quest_id, player)
+        target ← str(quest.get("target_count", quest.get("target_level", "?")))
+        reward_amount ← str(quest.get("reward", {}).get("amount", 0))
+
+        lignes_finales ← liste vide
+        POUR CHAQUE ligne DANS lignes:
+            ligne ← ligne.replace("{progress}", str(progression))
+            ligne ← ligne.replace("{target}", target)
+            ligne ← ligne.replace("{reward}", reward_amount)
+            ajouter ligne à lignes_finales
+
+        RETOURNER lignes_finales
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE SPÉCIALE : __str__
+    # -----------------------------------------------------------------
+
+    MÉTHODE __str__(self):
+        RETOURNER "QuestManager ({} quêtes chargées)".format(len(self.quests))
