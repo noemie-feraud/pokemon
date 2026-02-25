@@ -1,0 +1,245 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+#
+# random : pour le tirage de capture
+# Pokemon : pour créer l'instance du Pokémon capturé si besoin
+#   (en pratique le Pokémon sauvage est déjà une instance, on la
+#   récupère telle quelle)
+
+importer random
+
+
+# =============================================================================
+# FONCTION : tenter_capture
+# =============================================================================
+#
+# Tente de capturer un Pokémon sauvage avec une Pokéball.
+#
+# Paramètres :
+#   pokemon_cible : objet Pokemon (le Pokémon sauvage à capturer)
+#   item_ball : objet Item (la Pokéball utilisée, avec son taux de capture)
+#   team : objet Team (l'équipe du joueur)
+#   storage : objet Storage (le stockage du joueur)
+#   type_combat : string ("wild" ou "trainer")
+#
+# Renvoie un dictionnaire avec le résultat :
+#   {
+#       "capture_reussie": bool,
+#       "pokemon_capture": objet Pokemon ou None,
+#       "destination": "team" ou "storage" ou None,
+#       "taux_utilise": float (le taux de capture de la ball),
+#       "jet": float (le nombre aléatoire tiré, pour le debug),
+#       "raison_echec": string ou None ("combat_dresseur", "miss", None)
+#   }
+#
+# Pourquoi autant d'infos dans le retour ?
+# Parce que combat_ui.py a besoin de savoir :
+#   - Si ça a marché → message "Gotcha !"
+#   - Si le Pokémon est allé dans l'équipe ou le stockage
+#     → message "X a été envoyé au stockage" si le stockage
+#   - Si c'était un combat dresseur → message "On ne peut pas
+#     capturer le Pokémon d'un dresseur !"
+# En renvoyant tout, le code appelant a pas besoin de deviner.
+
+FONCTION tenter_capture(pokemon_cible, item_ball, team, storage, type_combat):
+
+    # -----------------------------------------------------------------
+    # ÉTAPE 1 : VÉRIFIER LE TYPE DE COMBAT
+    # -----------------------------------------------------------------
+    #
+    # On peut capturer uniquement en combat sauvage (CA-60).
+    # Si c'est un combat dresseur, on refuse immédiatement.
+    # La ball n'est PAS consommée dans ce cas (c'est combat.py
+    # qui gère la consommation, il la retire que si on a vraiment
+    # tenté la capture).
+
+    SI type_combat != "wild":
+        RETOURNER {
+            "capture_reussie": False,
+            "pokemon_capture": None,
+            "destination": None,
+            "taux_utilise": 0,
+            "jet": 0,
+            "raison_echec": "combat_dresseur"
+        }
+
+
+    # -----------------------------------------------------------------
+    # ÉTAPE 2 : RÉCUPÉRER LE TAUX DE CAPTURE
+    # -----------------------------------------------------------------
+    #
+    # Le taux vient de l'objet Item (la Pokéball).
+    # item_ball.effect_value contient le pourcentage : 30, 60, 80, 100.
+    # On le convertit en float entre 0 et 1.
+    #
+    # Exemple : Pokéball → effect_value = 30 → taux = 0.30
+
+    taux ← item_ball.effect_value / 100
+
+
+    # -----------------------------------------------------------------
+    # ÉTAPE 3 : TIRER LE DÉ
+    # -----------------------------------------------------------------
+    #
+    # On tire un nombre aléatoire entre 0.0 et 1.0.
+    # Si le jet est inférieur ou égal au taux, la capture réussit.
+    #
+    # Exemples :
+    #   Pokéball (taux 0.30), jet = 0.25 → 0.25 <= 0.30 → CAPTURE !
+    #   Pokéball (taux 0.30), jet = 0.45 → 0.45 > 0.30 → RATÉ
+    #   Master Ball (taux 1.00), jet = 0.99 → 0.99 <= 1.00 → CAPTURE !
+    #   (la Master Ball réussit toujours)
+
+    jet ← random.random()
+
+    SI jet > taux:
+        # Capture ratée
+        RETOURNER {
+            "capture_reussie": False,
+            "pokemon_capture": None,
+            "destination": None,
+            "taux_utilise": taux,
+            "jet": jet,
+            "raison_echec": "miss"
+        }
+
+
+    # -----------------------------------------------------------------
+    # ÉTAPE 4 : CAPTURE RÉUSSIE — AJOUTER LE POKÉMON
+    # -----------------------------------------------------------------
+    #
+    # Le Pokémon est capturé. On doit le mettre quelque part.
+    #
+    # Si l'équipe a de la place → dans l'équipe.
+    # Si l'équipe est pleine → dans le stockage.
+    #
+    # Le Pokémon sauvage est déjà un objet Pokemon complet (il a été
+    # créé par state_exploration.py ou combat.py au début du combat).
+    # On le récupère tel quel — il garde son niveau, ses PV actuels,
+    # ses attaques, tout. C'est réaliste : on capture un Pokémon
+    # affaibli, il arrive affaibli dans l'équipe.
+
+    destination ← None
+
+    SI NOT team.est_pleine:
+        team.ajouter(pokemon_cible)
+        destination ← "team"
+    SINON:
+        storage.ajouter(pokemon_cible)
+        destination ← "storage"
+
+
+    # -----------------------------------------------------------------
+    # ÉTAPE 5 : RETOURNER LE RÉSULTAT
+    # -----------------------------------------------------------------
+
+    RETOURNER {
+        "capture_reussie": True,
+        "pokemon_capture": pokemon_cible,
+        "destination": destination,
+        "taux_utilise": taux,
+        "jet": jet,
+        "raison_echec": None
+    }
+
+
+# =============================================================================
+# FONCTION : peut_tenter_capture
+# =============================================================================
+#
+# Vérifie si le joueur peut tenter une capture dans le contexte actuel.
+# C'est une fonction de pré-vérification appelée par combat.py ou
+# state_combat.py AVANT de proposer l'option "Sac → Pokéball" au joueur.
+#
+# Conditions :
+#   1. C'est un combat sauvage (pas un combat dresseur)
+#   2. Le joueur possède au moins une Pokéball (n'importe quel type)
+#
+# Paramètres :
+#   type_combat : "wild" ou "trainer"
+#   inventory : objet Inventory du joueur
+#
+# Renvoie True si la capture est possible, False sinon.
+#
+# Si ça renvoie False, l'interface grise le bouton de capture
+# ou le masque complètement.
+
+FONCTION peut_tenter_capture(type_combat, inventory):
+    SI type_combat != "wild":
+        RETOURNER False
+
+    RETOURNER inventory.has_pokeballs()
+
+
+# =============================================================================
+# FONCTION : get_balls_disponibles
+# =============================================================================
+#
+# Renvoie la liste des Pokéballs que le joueur possède.
+# Utilisée par state_combat.py pour afficher le menu de sélection
+# de Pokéball quand le joueur veut capturer.
+#
+# Renvoie une liste de tuples (objet Item, quantité) triée par
+# taux de capture croissant (Pokéball en premier, Master Ball en dernier).
+# Comme ça le joueur voit les balls dans l'ordre logique.
+#
+# inventory : objet Inventory du joueur
+
+FONCTION get_balls_disponibles(inventory):
+    balls ← inventory.get_by_category("pokeball")
+
+    # Trier par taux de capture croissant
+    trier balls par item.effect_value croissant
+
+    RETOURNER balls
+
+
+# =============================================================================
+# FONCTION : calculer_nombre_secousses
+# =============================================================================
+#
+# Calcule le nombre de secousses de la Pokéball avant le résultat.
+# C'est purement cosmétique — ça change pas le résultat de la capture,
+# mais ça rend l'animation plus intéressante.
+#
+# Dans les vrais Pokémon, la ball se secoue 0, 1, 2 ou 3 fois avant
+# de se casser (échec) ou de se verrouiller (succès). Plus elle se
+# secoue, plus le joueur a espoir que ça marche.
+#
+# Pour nous :
+#   - Capture réussie → 3 secousses + verrouillage
+#   - Capture ratée → 0 à 2 secousses (aléatoire)
+#
+# Le nombre de secousses en cas d'échec dépend de la proximité du jet
+# avec le taux. Si le jet était très proche du taux (presque réussi),
+# on fait 2 secousses. Si c'était loin, 0 secousse.
+#
+# capture_reussie : bool
+# taux : float (le taux de capture de la ball)
+# jet : float (le nombre aléatoire tiré)
+#
+# Renvoie un int entre 0 et 3.
+
+FONCTION calculer_nombre_secousses(capture_reussie, taux, jet):
+    SI capture_reussie:
+        RETOURNER 3    # succès = toujours 3 secousses
+
+    # Calculer la "proximité" du jet avec le taux
+    # Plus le jet est proche du taux, plus on était proche de réussir
+    # → plus de secousses pour le suspense
+    SI taux == 0:
+        RETOURNER 0
+
+    ratio ← jet / taux    # ratio > 1 puisque jet > taux (capture ratée)
+
+    SI ratio < 1.3:
+        # Très proche de réussir → 2 secousses ("oh presque !")
+        RETOURNER 2
+
+    SI ratio < 2.0:
+        # Moyennement proche → 1 secousse
+        RETOURNER 1
+
+    # Loin du taux → 0 secousse ("il s'est libéré immédiatement")
+    RETOURNER 0
