@@ -1,0 +1,231 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+#
+# pygame : pour le rendu
+# settings : pour les dimensions de l'écran et les couleurs
+
+importer pygame
+importer SCREEN_WIDTH, SCREEN_HEIGHT depuis config.settings
+
+
+# =============================================================================
+# CONSTANTES LOCALES
+# =============================================================================
+
+HAUTEUR_HUD ← 32                   # hauteur du bandeau en haut
+MARGE ← 10                          # marge intérieure
+TAILLE_POLICE_HUD ← 20              # taille du texte du HUD
+TAILLE_POLICE_ZONE ← 40             # taille du nom de zone (gros texte central)
+DUREE_NOM_ZONE ← 3.0                # secondes d'affichage du nom de zone
+DUREE_FONDU_ZONE ← 1.0              # secondes de fondu en sortie
+ALPHA_FOND_HUD ← 60                 # transparence du fond du HUD
+
+
+# =============================================================================
+# CLASSE HUD
+# =============================================================================
+#
+# Affiche les informations persistantes en haut de l'écran d'exploration.
+
+CLASSE HUD:
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+    #
+    # game_manager : pour accéder au player et au day_night_cycle.
+    #
+    # On crée les polices et les surfaces réutilisables.
+    # Le fond du HUD est une surface semi-transparente créée une
+    # seule fois et blittée à chaque frame.
+
+    MÉTHODE __init__(self, game_manager):
+        self.game_manager ← game_manager
+
+        # --- POLICES ---
+        self.font_hud ← pygame.font.Font(None, TAILLE_POLICE_HUD)
+        self.font_zone ← pygame.font.Font(None, TAILLE_POLICE_ZONE)
+
+        # --- FOND DU HUD ---
+        # Surface semi-transparente sur toute la largeur
+        self.fond_surface ← pygame.Surface((SCREEN_WIDTH, HAUTEUR_HUD))
+        self.fond_surface.fill((0, 0, 0))
+        self.fond_surface.set_alpha(ALPHA_FOND_HUD)
+
+        # --- NOM DE ZONE (temporaire) ---
+        self.nom_zone_actif ← False
+        self.nom_zone_texte ← ""
+        self.nom_zone_timer ← 0
+        self.nom_zone_alpha ← 255
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : show_zone_name
+    # -----------------------------------------------------------------
+    #
+    # Déclenche l'affichage temporaire du nom de la zone.
+    # Appelée par state_exploration.py quand le joueur change de zone.
+    #
+    # nom : le nom de la zone ("Campus", "Alentours", "Arena")
+
+    MÉTHODE show_zone_name(self, nom):
+        self.nom_zone_actif ← True
+        self.nom_zone_texte ← nom
+        self.nom_zone_timer ← 0
+        self.nom_zone_alpha ← 255
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : update
+    # -----------------------------------------------------------------
+    #
+    # Met à jour les éléments animés du HUD.
+    # Pour l'instant, juste le timer du nom de zone.
+    #
+    # dt : delta time en secondes
+
+    MÉTHODE update(self, dt):
+        # --- NOM DE ZONE ---
+        SI self.nom_zone_actif:
+            self.nom_zone_timer ← self.nom_zone_timer + dt
+
+            SI self.nom_zone_timer < DUREE_NOM_ZONE:
+                # Phase d'affichage : opacité maximale
+                self.nom_zone_alpha ← 255
+
+            SINON SI self.nom_zone_timer < DUREE_NOM_ZONE + DUREE_FONDU_ZONE:
+                # Phase de fondu : opacité qui diminue
+                progression_fondu ← (self.nom_zone_timer - DUREE_NOM_ZONE) / DUREE_FONDU_ZONE
+                self.nom_zone_alpha ← int(255 × (1 - progression_fondu))
+
+            SINON:
+                # Terminé
+                self.nom_zone_actif ← False
+                self.nom_zone_alpha ← 0
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : draw
+    # -----------------------------------------------------------------
+    #
+    # Dessine le HUD par-dessus l'écran de jeu.
+    # Appelée EN DERNIER par state_exploration.py dans render(),
+    # après la map, les PNJ, le joueur, et le filtre jour/nuit.
+    #
+    # screen : la surface Pygame
+
+    MÉTHODE draw(self, screen):
+        # --- FOND DU BANDEAU ---
+        screen.blit(self.fond_surface, (0, 0))
+
+        # --- HORLOGE ---
+        self._draw_horloge(screen)
+
+        # --- CRÉDITS ---
+        self._draw_credits(screen)
+
+        # --- NOM DE ZONE (temporaire, au centre de l'écran) ---
+        SI self.nom_zone_actif:
+            self._draw_nom_zone(screen)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _draw_horloge
+    # -----------------------------------------------------------------
+    #
+    # Dessine l'horloge à gauche du HUD.
+    # Lit l'heure depuis le cycle jour/nuit.
+    #
+    # Format : "🕐 HH:MM" (sans emoji en vrai, juste le texte)
+    #
+    # On affiche aussi un indicateur jour/nuit sous forme de texte
+    # pour que le joueur sache sans ambiguïté.
+    # "☀" si c'est le jour, "🌙" si c'est la nuit.
+    # En pratique avec Pygame on peut pas afficher des emoji facilement,
+    # donc on utilise "JOUR" ou "NUIT" en texte, ou un petit
+    # rectangle coloré (jaune = jour, bleu = nuit).
+
+    MÉTHODE _draw_horloge(self, screen):
+        day_night ← self.game_manager.day_night_cycle
+
+        SI day_night EST None:
+            RETOURNER
+
+        heure ← day_night.get_formatted_time()
+
+        # Indicateur jour/nuit
+        SI day_night.is_day():
+            indicateur ← "[J]"
+            couleur_indicateur ← (255, 220, 50)    # jaune
+        SINON:
+            indicateur ← "[N]"
+            couleur_indicateur ← (100, 100, 255)    # bleu
+
+        # Dessiner l'heure
+        texte_heure ← "{} {}".format(indicateur, heure)
+        surface ← self.font_hud.render(texte_heure, True, (255, 255, 255))
+        screen.blit(surface, (MARGE, (HAUTEUR_HUD - surface.get_height()) / 2))
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _draw_credits
+    # -----------------------------------------------------------------
+    #
+    # Dessine les crédits à droite du HUD.
+    # Lit le montant depuis le player.
+
+    MÉTHODE _draw_credits(self, screen):
+        player ← self.game_manager.player
+
+        SI player EST None:
+            RETOURNER
+
+        texte ← "{} crédits".format(player.credits)
+        surface ← self.font_hud.render(texte, True, (255, 255, 255))
+
+        # Aligner à droite
+        pos_x ← SCREEN_WIDTH - surface.get_width() - MARGE
+        pos_y ← (HAUTEUR_HUD - surface.get_height()) / 2
+        screen.blit(surface, (pos_x, pos_y))
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _draw_nom_zone
+    # -----------------------------------------------------------------
+    #
+    # Dessine le nom de la zone au centre de l'écran.
+    # Gros texte avec un fond semi-transparent derrière.
+    # L'opacité est contrôlée par nom_zone_alpha (fondu en sortie).
+    #
+    # Le texte est centré horizontalement et placé dans le tiers
+    # supérieur de l'écran (pas pile au milieu pour pas cacher
+    # le joueur).
+
+    MÉTHODE _draw_nom_zone(self, screen):
+        SI self.nom_zone_alpha <= 0:
+            RETOURNER
+
+        # Rendre le texte
+        surface_texte ← self.font_zone.render(self.nom_zone_texte, True, (255, 255, 255))
+
+        # Appliquer l'alpha
+        surface_texte.set_alpha(self.nom_zone_alpha)
+
+        # Fond semi-transparent derrière le texte
+        padding ← 20
+        fond_largeur ← surface_texte.get_width() + padding × 2
+        fond_hauteur ← surface_texte.get_height() + padding
+        fond ← pygame.Surface((fond_largeur, fond_hauteur))
+        fond.fill((0, 0, 0))
+        fond.set_alpha(int(self.nom_zone_alpha × 0.5))    # fond plus transparent que le texte
+
+        # Centrer horizontalement, tiers supérieur verticalement
+        centre_x ← (SCREEN_WIDTH - fond_largeur) / 2
+        centre_y ← SCREEN_HEIGHT / 3 - fond_hauteur / 2
+
+        screen.blit(fond, (centre_x, centre_y))
+        screen.blit(surface_texte, (
+            centre_x + padding,
+            centre_y + padding / 2
+        ))
