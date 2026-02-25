@@ -1,0 +1,641 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+
+importer pygame
+importer State depuis states.state
+importer (SCREEN_WIDTH, SCREEN_HEIGHT) depuis config.settings
+
+
+# =============================================================================
+# CONSTANTES LOCALES
+# =============================================================================
+
+MODE_LISTE ← "liste"
+MODE_CIBLE ← "cible"
+DUREE_MESSAGE ← 1.5
+
+ORDRE_CATEGORIES ← ["heal", "pokeball", "boost", "revive", "status"]
+NOMS_CATEGORIES ← {
+    "heal": "Soins",
+    "pokeball": "Pokéballs",
+    "boost": "Boosts",
+    "revive": "Revive",
+    "status": "Statut"
+}
+
+# Dimensions du panneau
+PANNEAU_X ← 80
+PANNEAU_Y ← 50
+PANNEAU_LARGEUR ← SCREEN_WIDTH - 160
+PANNEAU_HAUTEUR ← SCREEN_HEIGHT - 100
+ITEMS_VISIBLES ← 8
+
+
+# =============================================================================
+# CLASSE STATE INVENTORY
+# =============================================================================
+#
+# Écran d'inventaire transparent, pushé depuis l'exploration.
+# Permet de consulter et d'utiliser les objets hors combat.
+
+CLASSE StateInventory (hérite de State):
+
+    transparent ← True
+
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+
+    MÉTHODE __init__(self, game_manager):
+        super().__init__(game_manager)
+
+        self.player ← game_manager.player
+
+        # --- POLICES ---
+        self.font_titre ← pygame.font.Font(None, 34)
+        self.font_item ← pygame.font.Font(None, 24)
+        self.font_info ← pygame.font.Font(None, 20)
+        self.font_categorie ← pygame.font.Font(None, 22)
+        self.font_message ← pygame.font.Font(None, 26)
+
+        # --- CONSTRUIRE LA LISTE AFFICHABLE ---
+        # On crée une liste "plate" qui contient des entrées :
+        # soit un séparateur de catégorie, soit un objet.
+        # Le curseur ne s'arrête que sur les objets.
+        self.lignes ← []
+        self.indices_items ← []    # indices dans self.lignes qui sont des objets
+        self._construire_liste()
+
+        # --- NAVIGATION ---
+        self.cursor_pos ← 0       # position dans self.indices_items
+        self.scroll_offset ← 0
+
+        # --- MODE ---
+        self.mode ← MODE_LISTE
+        self.item_selectionne ← None
+        self.index_cible ← 0
+
+        # --- MESSAGE ---
+        self.message_temporaire ← None
+        self.message_timer ← 0
+        self.message_couleur ← (255, 255, 255)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _construire_liste
+    # -----------------------------------------------------------------
+    #
+    # Construit la liste affichable à partir de l'inventaire.
+    # Regroupe les objets par catégorie avec des séparateurs.
+    #
+    # Chaque entrée est un dict :
+    #   {"type": "categorie", "nom": "Soins"}
+    #   {"type": "item", "item": Item, "quantite": 5}
+    #
+    # Les catégories vides sont omises.
+
+    MÉTHODE _construire_liste(self):
+        self.lignes ← []
+        self.indices_items ← []
+        catalog ← self.game_manager.item_catalog
+
+        POUR CHAQUE categorie DANS ORDRE_CATEGORIES:
+            # Récupérer les objets possédés dans cette catégorie
+            items_categorie ← self.player.inventory.get_by_category(categorie, catalog)
+
+            SI len(items_categorie) == 0:
+                CONTINUER
+
+            # Séparateur
+            self.lignes.ajouter({
+                "type": "categorie",
+                "nom": NOMS_CATEGORIES.get(categorie, categorie)
+            })
+
+            # Objets
+            POUR CHAQUE (item, quantite) DANS items_categorie:
+                index_ligne ← len(self.lignes)
+                self.lignes.ajouter({
+                    "type": "item",
+                    "item": item,
+                    "quantite": quantite
+                })
+                self.indices_items.ajouter(index_ligne)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : on_enter
+    # -----------------------------------------------------------------
+
+    MÉTHODE on_enter(self):
+        # Reconstruire la liste (peut avoir changé si on revient
+        # après un combat ou un achat)
+        self._construire_liste()
+        self.cursor_pos ← 0
+        self.scroll_offset ← 0
+        self.mode ← MODE_LISTE
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : handle_events
+    # -----------------------------------------------------------------
+
+    MÉTHODE handle_events(self, events):
+        POUR CHAQUE event DANS events:
+            SI event.type != pygame.KEYDOWN:
+                CONTINUER
+
+            SI self.mode == MODE_LISTE:
+                self._handle_liste(event)
+            SINON SI self.mode == MODE_CIBLE:
+                self._handle_cible(event)
+
+
+    # -----------------------------------------------------------------
+    # HANDLE MODE LISTE
+    # -----------------------------------------------------------------
+
+    MÉTHODE _handle_liste(self, event):
+
+        # --- QUITTER ---
+        SI event.key == pygame.K_ESCAPE:
+            self.game_manager.state_manager.pop()
+            RETOURNER
+
+        # --- NAVIGUER ---
+        SI event.key == pygame.K_UP:
+            self._naviguer_liste(-1)
+        SINON SI event.key == pygame.K_DOWN:
+            self._naviguer_liste(1)
+
+        # --- UTILISER ---
+        SINON SI event.key EST dans [pygame.K_SPACE, pygame.K_RETURN]:
+            self._tenter_utilisation()
+
+
+    # -----------------------------------------------------------------
+    # NAVIGATION LISTE
+    # -----------------------------------------------------------------
+    #
+    # Déplace le curseur entre les items (saute les séparateurs).
+
+    MÉTHODE _naviguer_liste(self, direction):
+        SI len(self.indices_items) == 0:
+            RETOURNER
+
+        ancien ← self.cursor_pos
+        self.cursor_pos ← clamper(self.cursor_pos + direction, 0, len(self.indices_items) - 1)
+
+        SI self.cursor_pos != ancien:
+            self.game_manager.audio_manager.play_sfx("menu_select")
+
+        # Ajuster le scroll
+        # On calcule la position visuelle de l'item sélectionné
+        index_ligne ← self.indices_items[self.cursor_pos]
+        SI index_ligne < self.scroll_offset:
+            self.scroll_offset ← max(0, index_ligne - 1)    # -1 pour montrer le séparateur au-dessus
+        SI index_ligne >= self.scroll_offset + ITEMS_VISIBLES:
+            self.scroll_offset ← index_ligne - ITEMS_VISIBLES + 1
+
+
+    # -----------------------------------------------------------------
+    # TENTER UTILISATION
+    # -----------------------------------------------------------------
+
+    MÉTHODE _tenter_utilisation(self):
+        SI len(self.indices_items) == 0:
+            RETOURNER
+
+        # Ignorer si un message est affiché
+        SI self.message_temporaire EST NOT None:
+            RETOURNER
+
+        index_ligne ← self.indices_items[self.cursor_pos]
+        ligne ← self.lignes[index_ligne]
+        item ← ligne["item"]
+
+        # Vérifier si l'objet est utilisable hors combat
+        SI NOT item.usable_outside_combat:
+            self._afficher_message("Utilisable uniquement en combat", (255, 200, 100))
+            RETOURNER
+
+        # Passer en mode sélection de cible
+        self.item_selectionne ← item
+        self.index_cible ← 0
+        self.mode ← MODE_CIBLE
+
+
+    # -----------------------------------------------------------------
+    # HANDLE MODE CIBLE
+    # -----------------------------------------------------------------
+    #
+    # Le joueur choisit un Pokémon cible dans son équipe.
+
+    MÉTHODE _handle_cible(self, event):
+
+        # --- ANNULER ---
+        SI event.key == pygame.K_ESCAPE:
+            self.mode ← MODE_LISTE
+            self.item_selectionne ← None
+            RETOURNER
+
+        # --- NAVIGUER ---
+        SI event.key == pygame.K_UP:
+            ancien ← self.index_cible
+            self.index_cible ← max(0, self.index_cible - 1)
+            SI self.index_cible != ancien:
+                self.game_manager.audio_manager.play_sfx("menu_select")
+
+        SINON SI event.key == pygame.K_DOWN:
+            max_index ← len(self.player.team.pokemons) - 1
+            ancien ← self.index_cible
+            self.index_cible ← min(max_index, self.index_cible + 1)
+            SI self.index_cible != ancien:
+                self.game_manager.audio_manager.play_sfx("menu_select")
+
+        # --- CONFIRMER ---
+        SINON SI event.key EST dans [pygame.K_SPACE, pygame.K_RETURN]:
+            self._appliquer_objet()
+
+
+    # -----------------------------------------------------------------
+    # APPLIQUER L'OBJET
+    # -----------------------------------------------------------------
+    #
+    # Applique l'objet sélectionné au Pokémon cible.
+    # Vérifie que la cible est valide selon le type d'objet.
+
+    MÉTHODE _appliquer_objet(self):
+        pokemon ← self.player.team.pokemons[self.index_cible]
+        item ← self.item_selectionne
+
+        # --- VALIDATION SELON LA CATÉGORIE ---
+
+        SI item.categorie == "heal":
+            SI pokemon.est_ko():
+                self._afficher_message("{} est KO, utilisez un Rappel".format(pokemon.nom), (255, 100, 100))
+                RETOURNER
+            SI pokemon.pv_actuels >= pokemon.pv_max:
+                self._afficher_message("{} a déjà tous ses PV !".format(pokemon.nom), (255, 200, 100))
+                RETOURNER
+
+        SINON SI item.categorie == "revive":
+            SI NOT pokemon.est_ko():
+                self._afficher_message("{} n'est pas KO !".format(pokemon.nom), (255, 100, 100))
+                RETOURNER
+
+        SINON SI item.categorie == "status":
+            SI NOT pokemon.a_statut():
+                self._afficher_message("{} n'a pas d'altération de statut".format(pokemon.nom), (255, 100, 100))
+                RETOURNER
+
+        # --- APPLIQUER L'EFFET ---
+        SI item.categorie == "heal":
+            pv_avant ← pokemon.pv_actuels
+            pokemon.soigner(item.effect_value)
+            pv_soignes ← pokemon.pv_actuels - pv_avant
+            message ← "{} récupère {} PV !".format(pokemon.nom, pv_soignes)
+
+        SINON SI item.categorie == "revive":
+            pokemon.reanimer(item.effect_value)
+            message ← "{} est réanimé !".format(pokemon.nom)
+
+        SINON SI item.categorie == "status":
+            pokemon.guerir_statut()
+            message ← "{} est guéri !".format(pokemon.nom)
+
+        SINON:
+            message ← "{} utilisé sur {} !".format(item.nom, pokemon.nom)
+
+        # --- RETIRER L'OBJET ---
+        self.player.inventory.retirer(item.id, 1)
+
+        # --- SFX ---
+        self.game_manager.audio_manager.play_sfx("soin")
+
+        # --- RECONSTRUIRE LA LISTE ---
+        self._construire_liste()
+
+        # Ajuster le curseur si l'objet a disparu
+        SI self.cursor_pos >= len(self.indices_items):
+            self.cursor_pos ← max(0, len(self.indices_items) - 1)
+
+        # --- MESSAGE ET RETOUR ---
+        self._afficher_message(message, (100, 255, 100))
+        self.mode ← MODE_LISTE
+        self.item_selectionne ← None
+
+
+    # -----------------------------------------------------------------
+    # UTILITAIRES
+    # -----------------------------------------------------------------
+
+    MÉTHODE _afficher_message(self, texte, couleur):
+        self.message_temporaire ← texte
+        self.message_couleur ← couleur
+        self.message_timer ← DUREE_MESSAGE
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : update
+    # -----------------------------------------------------------------
+
+    MÉTHODE update(self, dt):
+        SI self.message_temporaire EST NOT None:
+            self.message_timer ← self.message_timer - dt
+            SI self.message_timer <= 0:
+                self.message_temporaire ← None
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : render
+    # -----------------------------------------------------------------
+    #
+    # L'exploration est rendue en dessous par le state_manager
+    # (grâce à transparent = True).
+    # On dessine un overlay sombre puis le panneau d'inventaire.
+
+    MÉTHODE render(self, screen):
+        # --- OVERLAY SOMBRE ---
+        overlay ← pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+        overlay.fill((0, 0, 0))
+        overlay.set_alpha(120)
+        screen.blit(overlay, (0, 0))
+
+        # --- PANNEAU PRINCIPAL ---
+        panneau ← pygame.Surface((PANNEAU_LARGEUR, PANNEAU_HAUTEUR))
+        panneau.fill((30, 30, 50))
+        screen.blit(panneau, (PANNEAU_X, PANNEAU_Y))
+        pygame.draw.rect(screen, (100, 100, 140),
+            (PANNEAU_X, PANNEAU_Y, PANNEAU_LARGEUR, PANNEAU_HAUTEUR), 2)
+
+        # --- TITRE ---
+        surface_titre ← self.font_titre.render("Inventaire", True, (255, 255, 255))
+        titre_x ← PANNEAU_X + (PANNEAU_LARGEUR - surface_titre.get_width()) / 2
+        screen.blit(surface_titre, (titre_x, PANNEAU_Y + 10))
+
+        # --- LISTE DES OBJETS ---
+        SI len(self.lignes) == 0:
+            surface_vide ← self.font_item.render("L'inventaire est vide", True, (100, 100, 100))
+            screen.blit(surface_vide, (PANNEAU_X + 30, PANNEAU_Y + 80))
+        SINON:
+            self._draw_liste(screen)
+
+        # --- PANNEAU INFO (bas du panneau) ---
+        self._draw_info_item(screen)
+
+        # --- SÉLECTION DE CIBLE (si mode cible) ---
+        SI self.mode == MODE_CIBLE:
+            self._draw_selection_cible(screen)
+
+        # --- CONTRÔLES ---
+        self._draw_controles(screen)
+
+        # --- MESSAGE ---
+        SI self.message_temporaire EST NOT None:
+            self._draw_message(screen)
+
+
+    # -----------------------------------------------------------------
+    # RENDU : LISTE DES OBJETS
+    # -----------------------------------------------------------------
+
+    MÉTHODE _draw_liste(self, screen):
+        zone_x ← PANNEAU_X + 20
+        zone_y ← PANNEAU_Y + 50
+        hauteur_ligne ← 30
+
+        # Item actuellement sélectionné (pour la surbrillance)
+        index_ligne_selectionnee ← -1
+        SI len(self.indices_items) > 0:
+            index_ligne_selectionnee ← self.indices_items[self.cursor_pos]
+
+        # Afficher les lignes visibles
+        debut ← self.scroll_offset
+        fin ← min(debut + ITEMS_VISIBLES, len(self.lignes))
+
+        POUR i DE debut À fin - 1:
+            ligne ← self.lignes[i]
+            y ← zone_y + (i - debut) × hauteur_ligne
+
+            SI ligne["type"] == "categorie":
+                # --- SÉPARATEUR ---
+                texte ← "── {} ──".format(ligne["nom"])
+                surface ← self.font_categorie.render(texte, True, (180, 180, 220))
+                screen.blit(surface, (zone_x, y + 5))
+
+            SINON SI ligne["type"] == "item":
+                item ← ligne["item"]
+                quantite ← ligne["quantite"]
+
+                # Surbrillance si sélectionné
+                SI i == index_ligne_selectionnee ET self.mode == MODE_LISTE:
+                    fond_rect ← pygame.Rect(zone_x - 5, y, PANNEAU_LARGEUR - 30, hauteur_ligne - 2)
+                    pygame.draw.rect(screen, (50, 50, 80), fond_rect)
+
+                # Curseur
+                prefixe ← "> " SI i == index_ligne_selectionnee SINON "  "
+
+                # Couleur selon utilisabilité hors combat
+                SI item.usable_outside_combat:
+                    couleur_nom ← (255, 255, 255)
+                SINON:
+                    couleur_nom ← (120, 120, 120)
+
+                # Nom
+                surface_nom ← self.font_item.render(
+                    prefixe + item.nom, True, couleur_nom)
+                screen.blit(surface_nom, (zone_x, y + 3))
+
+                # Quantité
+                texte_qte ← "x{}".format(quantite)
+                surface_qte ← self.font_item.render(texte_qte, True, (200, 200, 200))
+                screen.blit(surface_qte, (zone_x + 280, y + 3))
+
+                # Effet résumé ou tag "Combat"
+                SI NOT item.usable_outside_combat:
+                    tag ← "[Combat]"
+                    couleur_tag ← (150, 100, 100)
+                SINON:
+                    tag ← self._get_effet_court(item)
+                    couleur_tag ← (150, 200, 150)
+
+                surface_tag ← self.font_info.render(tag, True, couleur_tag)
+                screen.blit(surface_tag, (zone_x + 340, y + 6))
+
+        # Indicateurs de scroll
+        SI debut > 0:
+            surface ← self.font_info.render("▲", True, (150, 150, 150))
+            screen.blit(surface, (PANNEAU_X + PANNEAU_LARGEUR - 30, zone_y))
+        SI fin < len(self.lignes):
+            surface ← self.font_info.render("▼", True, (150, 150, 150))
+            screen.blit(surface, (PANNEAU_X + PANNEAU_LARGEUR - 30, zone_y + ITEMS_VISIBLES × hauteur_ligne))
+
+
+    # -----------------------------------------------------------------
+    # RENDU : EFFET COURT
+    # -----------------------------------------------------------------
+
+    MÉTHODE _get_effet_court(self, item):
+        SI item.categorie == "heal":
+            RETOURNER "+{} PV".format(item.effect_value)
+        SINON SI item.categorie == "pokeball":
+            RETOURNER "{}%".format(item.effect_value)
+        SINON SI item.categorie == "boost":
+            RETOURNER "+{}%".format(item.effect_value)
+        SINON SI item.categorie == "revive":
+            RETOURNER "réanime"
+        SINON SI item.categorie == "status":
+            RETOURNER "guérit"
+        SINON:
+            RETOURNER ""
+
+
+    # -----------------------------------------------------------------
+    # RENDU : INFO ITEM SÉLECTIONNÉ
+    # -----------------------------------------------------------------
+    #
+    # En bas du panneau, description détaillée de l'objet sous le curseur.
+
+    MÉTHODE _draw_info_item(self, screen):
+        info_y ← PANNEAU_Y + PANNEAU_HAUTEUR - 80
+
+        # Ligne de séparation
+        pygame.draw.line(screen, (80, 80, 120),
+            (PANNEAU_X + 15, info_y),
+            (PANNEAU_X + PANNEAU_LARGEUR - 15, info_y), 1)
+
+        SI len(self.indices_items) == 0:
+            RETOURNER
+
+        index_ligne ← self.indices_items[self.cursor_pos]
+        item ← self.lignes[index_ligne]["item"]
+
+        # Description
+        description ← self._get_description_complete(item)
+        surface ← self.font_info.render(description, True, (200, 200, 200))
+        screen.blit(surface, (PANNEAU_X + 25, info_y + 15))
+
+        # Contexte d'utilisation
+        contextes ← []
+        SI item.usable_in_combat:
+            contextes.ajouter("Combat")
+        SI item.usable_outside_combat:
+            contextes.ajouter("Exploration")
+        texte_ctx ← "Utilisable en : " + ", ".join(contextes) SI len(contextes) > 0 SINON "Non utilisable"
+        surface_ctx ← self.font_info.render(texte_ctx, True, (150, 150, 180))
+        screen.blit(surface_ctx, (PANNEAU_X + 25, info_y + 40))
+
+
+    MÉTHODE _get_description_complete(self, item):
+        SI item.categorie == "heal":
+            RETOURNER "Restaure {} PV d'un Pokémon. Ne fonctionne pas sur un KO.".format(item.effect_value)
+        SINON SI item.categorie == "pokeball":
+            RETOURNER "Taux de capture de {}%. Utilisable sur Pokémon sauvage uniquement.".format(item.effect_value)
+        SINON SI item.categorie == "boost":
+            RETOURNER "Augmente une statistique de {}% pour la durée d'un combat.".format(item.effect_value)
+        SINON SI item.categorie == "revive":
+            RETOURNER "Réanime un Pokémon KO et restaure {} PV.".format(item.effect_value)
+        SINON SI item.categorie == "status":
+            RETOURNER "Soigne les altérations de statut (poison, paralysie, etc.)."
+        SINON:
+            RETOURNER "Objet spécial."
+
+
+    # -----------------------------------------------------------------
+    # RENDU : SÉLECTION DE CIBLE
+    # -----------------------------------------------------------------
+    #
+    # Sous-panneau qui apparaît à droite quand le joueur doit
+    # choisir un Pokémon cible pour l'objet.
+
+    MÉTHODE _draw_selection_cible(self, screen):
+        # Sous-panneau à droite
+        sp_largeur ← 280
+        sp_hauteur ← 300
+        sp_x ← PANNEAU_X + PANNEAU_LARGEUR - sp_largeur - 10
+        sp_y ← PANNEAU_Y + 50
+
+        # Fond
+        fond ← pygame.Surface((sp_largeur, sp_hauteur))
+        fond.fill((25, 25, 45))
+        screen.blit(fond, (sp_x, sp_y))
+        pygame.draw.rect(screen, (255, 220, 50),
+            (sp_x, sp_y, sp_largeur, sp_hauteur), 2)
+
+        # Titre
+        titre ← "Utiliser {} sur :".format(self.item_selectionne.nom)
+        surface_titre ← self.font_info.render(titre, True, (255, 220, 50))
+        screen.blit(surface_titre, (sp_x + 10, sp_y + 10))
+
+        # Liste de l'équipe
+        POUR i, pokemon DANS enumerate(self.player.team.pokemons):
+            y ← sp_y + 40 + i × 40
+
+            # Surbrillance
+            SI i == self.index_cible:
+                fond_rect ← pygame.Rect(sp_x + 5, y, sp_largeur - 10, 36)
+                pygame.draw.rect(screen, (50, 50, 80), fond_rect)
+
+            # Curseur
+            prefixe ← "> " SI i == self.index_cible SINON "  "
+
+            # Nom et PV
+            texte ← "{}{}  Nv.{}".format(prefixe, pokemon.nom, pokemon.niveau)
+            surface_nom ← self.font_item.render(texte, True, (255, 255, 255))
+            screen.blit(surface_nom, (sp_x + 10, y + 5))
+
+            # PV ou KO
+            SI pokemon.est_ko():
+                texte_pv ← "[KO]"
+                couleur_pv ← (255, 80, 80)
+            SINON:
+                texte_pv ← "{}/{}".format(pokemon.pv_actuels, pokemon.pv_max)
+                couleur_pv ← (150, 255, 150)
+
+            surface_pv ← self.font_info.render(texte_pv, True, couleur_pv)
+            screen.blit(surface_pv, (sp_x + 200, y + 8))
+
+        # Indication
+        hint ← "[Entrée] Confirmer  [Échap] Annuler"
+        surface_hint ← self.font_info.render(hint, True, (120, 120, 120))
+        screen.blit(surface_hint, (sp_x + 10, sp_y + sp_hauteur - 25))
+
+
+    # -----------------------------------------------------------------
+    # RENDU : CONTRÔLES
+    # -----------------------------------------------------------------
+
+    MÉTHODE _draw_controles(self, screen):
+        SI self.mode == MODE_LISTE:
+            texte ← "[↑↓] Naviguer  [Entrée] Utiliser  [Échap] Fermer"
+        SINON:
+            texte ← "[↑↓] Choisir Pokémon  [Entrée] Confirmer  [Échap] Annuler"
+
+        surface ← self.font_info.render(texte, True, (120, 120, 120))
+        pos_x ← PANNEAU_X + (PANNEAU_LARGEUR - surface.get_width()) / 2
+        screen.blit(surface, (pos_x, PANNEAU_Y + PANNEAU_HAUTEUR - 25))
+
+
+    # -----------------------------------------------------------------
+    # RENDU : MESSAGE TEMPORAIRE
+    # -----------------------------------------------------------------
+
+    MÉTHODE _draw_message(self, screen):
+        surface_texte ← self.font_message.render(
+            self.message_temporaire, True, self.message_couleur)
+
+        padding ← 15
+        fond_largeur ← surface_texte.get_width() + padding × 2
+        fond_hauteur ← surface_texte.get_height() + padding
+        fond ← pygame.Surface((fond_largeur, fond_hauteur))
+        fond.fill((0, 0, 0))
+        fond.set_alpha(200)
+
+        centre_x ← (SCREEN_WIDTH - fond_largeur) / 2
+        centre_y ← SCREEN_HEIGHT / 2
+
+        screen.blit(fond, (centre_x, centre_y))
+        screen.blit(surface_texte, (centre_x + padding, centre_y + padding / 2))
