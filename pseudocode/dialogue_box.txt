@@ -1,0 +1,388 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+#
+# pygame : pour le rendu (Surface, Rect, font)
+# settings : pour les dimensions de l'écran, les couleurs, la taille de police
+
+importer pygame
+importer (SCREEN_WIDTH, SCREEN_HEIGHT, TILE_SIZE,
+         COULEUR_DIALOGUE_FOND, COULEUR_DIALOGUE_BORDURE,
+         COULEUR_DIALOGUE_TEXTE) depuis config.settings
+
+
+# =============================================================================
+# CONSTANTES LOCALES
+# =============================================================================
+#
+# Ces constantes sont spécifiques à la DialogueBox.
+# On les met ici plutôt que dans settings parce qu'elles concernent
+# que ce composant. Si un jour on veut les rendre configurables,
+# on les déplacera dans settings.
+
+HAUTEUR_BOITE ← 96                  # 3 tiles de haut
+MARGE_X ← 16                        # marge horizontale intérieure
+MARGE_Y ← 12                        # marge verticale intérieure
+TAILLE_POLICE ← 22                  # taille du texte en pixels
+VITESSE_DEFILEMENT ← 30             # caractères par seconde
+LIGNES_MAX ← 2                      # nombre de lignes visibles dans la boîte
+EPAISSEUR_BORDURE ← 3               # épaisseur de la bordure de la boîte
+
+
+# =============================================================================
+# CLASSE DIALOGUE BOX
+# =============================================================================
+#
+# Composant d'affichage pour les boîtes de dialogue.
+# Gère le typewriter effect, le word wrap, et la navigation.
+
+CLASSE DialogueBox:
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+    #
+    # lignes : liste de strings, les lignes de dialogue à afficher.
+    #   Chaque string est une ligne du PNJ.
+    #   Exemple : ["Bienvenue !", "Je vais soigner vos Pokémon."]
+    #
+    # audio_manager : pour jouer le bip à chaque caractère.
+    #   Peut être None (pas de son).
+    #
+    # La boîte est positionnée en bas de l'écran, centrée horizontalement.
+
+    MÉTHODE __init__(self, lignes, audio_manager=None):
+
+        # --- DONNÉES ---
+        self.lignes_originales ← lignes
+        self.audio_manager ← audio_manager
+
+        # --- POLICE ---
+        # On utilise la police par défaut de Pygame pour l'instant.
+        # Si on a une police custom (pixel art), on la charge ici.
+        self.font ← pygame.font.Font(None, TAILLE_POLICE)
+
+        # --- GÉOMÉTRIE DE LA BOÎTE ---
+        self.boite_x ← 0
+        self.boite_y ← SCREEN_HEIGHT - HAUTEUR_BOITE
+        self.boite_largeur ← SCREEN_WIDTH
+        self.boite_hauteur ← HAUTEUR_BOITE
+        self.boite_rect ← pygame.Rect(
+            self.boite_x, self.boite_y,
+            self.boite_largeur, self.boite_hauteur
+        )
+
+        # --- CALCUL DE LA LARGEUR MAX DE TEXTE ---
+        # C'est la largeur en pixels disponible pour le texte,
+        # en tenant compte des marges.
+        self.largeur_texte_max ← self.boite_largeur - (MARGE_X × 2)
+
+        # --- WORD WRAP ---
+        # On pré-calcule le word wrap pour toutes les lignes.
+        # Chaque ligne originale peut devenir 1 ou 2 lignes wrappées.
+        # self.pages est une liste de "pages".
+        # Chaque page est une liste de 1 ou 2 lignes (ce qu'on affiche
+        # en même temps dans la boîte).
+        self.pages ← self._calculer_pages()
+
+        # --- ÉTAT DE L'AFFICHAGE ---
+        self.page_actuelle ← 0
+        self.caracteres_affiches ← 0    # nombre de caractères visibles
+        self.timer_defilement ← 0        # compteur pour le typewriter
+        self.texte_complet ← False        # True quand toute la page est affichée
+        self.dialogue_termine ← False     # True quand toutes les pages sont passées
+
+        # --- INDICATEUR "SUITE" ---
+        # Le petit triangle qui pulse en bas à droite quand le texte
+        # est complet et qu'on attend l'input du joueur.
+        self.timer_indicateur ← 0
+        self.indicateur_visible ← True
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _calculer_pages
+    # -----------------------------------------------------------------
+    #
+    # Prend les lignes originales et les découpe en pages.
+    # Chaque page contient au plus LIGNES_MAX (2) lignes de texte
+    # qui rentrent dans la boîte.
+    #
+    # Le processus :
+    #   1. Pour chaque ligne originale, faire le word wrap
+    #   2. Le word wrap peut produire 1, 2 ou plus de lignes wrappées
+    #   3. Regrouper les lignes wrappées en pages de 2
+    #
+    # Exemple :
+    #   Ligne originale 1 : "Bienvenue !" → 1 ligne wrappée
+    #   Ligne originale 2 : "Très long texte..." → 2 lignes wrappées
+    #
+    #   Pages : [
+    #     ["Bienvenue !", "Très long texte qui tient"],
+    #     ["sur deux lignes de la boîte."]
+    #   ]
+    #
+    # C'est un peu simplifié. En pratique, on regroupe les lignes
+    # originales en pages de 2 lignes wrappées, en coupant quand
+    # une ligne originale ne tient pas sur une seule ligne de boîte.
+
+    MÉTHODE _calculer_pages(self):
+        toutes_lignes_wrappees ← liste vide
+
+        POUR CHAQUE ligne DANS self.lignes_originales:
+            lignes_wrap ← self._word_wrap(ligne)
+            POUR CHAQUE lw DANS lignes_wrap:
+                ajouter lw à toutes_lignes_wrappees
+
+        # Regrouper en pages de LIGNES_MAX lignes
+        pages ← liste vide
+        page_courante ← liste vide
+
+        POUR CHAQUE ligne DANS toutes_lignes_wrappees:
+            ajouter ligne à page_courante
+
+            SI len(page_courante) >= LIGNES_MAX:
+                ajouter page_courante à pages
+                page_courante ← liste vide
+
+        # Ajouter la dernière page si elle est pas vide
+        SI page_courante N'EST PAS vide:
+            ajouter page_courante à pages
+
+        # Sécurité : au moins une page vide si y'a rien
+        SI pages EST vide:
+            ajouter [""] à pages
+
+        RETOURNER pages
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _word_wrap
+    # -----------------------------------------------------------------
+    #
+    # Découpe une ligne de texte en sous-lignes qui rentrent dans
+    # la largeur disponible.
+    #
+    # On coupe au dernier espace avant la limite.
+    # Si un mot est plus long que la largeur (ça devrait pas arriver
+    # avec du texte normal), on le coupe quand même.
+    #
+    # ligne : le texte à wrapper
+    #
+    # Renvoie une liste de strings (les sous-lignes).
+
+    MÉTHODE _word_wrap(self, ligne):
+        mots ← découper ligne en mots (split par espaces)
+        lignes_result ← liste vide
+        ligne_courante ← ""
+
+        POUR CHAQUE mot DANS mots:
+            # Tester si le mot rentre sur la ligne courante
+            test ← ligne_courante + " " + mot SI ligne_courante N'EST PAS vide SINON mot
+            largeur_test ← self.font.size(test)[0]    # largeur en pixels
+
+            SI largeur_test <= self.largeur_texte_max:
+                # Ça rentre, on ajoute le mot
+                ligne_courante ← test
+            SINON:
+                # Ça rentre pas, on passe à la ligne suivante
+                SI ligne_courante N'EST PAS vide:
+                    ajouter ligne_courante à lignes_result
+                ligne_courante ← mot
+
+        # Ajouter la dernière ligne
+        SI ligne_courante N'EST PAS vide:
+            ajouter ligne_courante à lignes_result
+
+        SI lignes_result EST vide:
+            RETOURNER [""]
+
+        RETOURNER lignes_result
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : update
+    # -----------------------------------------------------------------
+    #
+    # Met à jour l'état de la boîte de dialogue.
+    # Appelée à chaque frame par StateDialogue.
+    #
+    # Gère :
+    #   - Le défilement du texte (typewriter effect)
+    #   - Le clignotement de l'indicateur "suite"
+    #
+    # dt : delta time en secondes
+
+    MÉTHODE update(self, dt):
+        SI self.dialogue_termine:
+            RETOURNER
+
+        SI NOT self.texte_complet:
+            # Avancer le typewriter
+            self.timer_defilement ← self.timer_defilement + dt
+
+            # Calculer combien de caractères on doit afficher
+            caracteres_cible ← int(self.timer_defilement × VITESSE_DEFILEMENT)
+
+            # Compter le nombre total de caractères de la page
+            texte_page ← self._get_texte_page_complet()
+            total_caracteres ← len(texte_page)
+
+            # Jouer le bip pour chaque nouveau caractère
+            SI caracteres_cible > self.caracteres_affiches:
+                SI self.audio_manager EST NOT None:
+                    self.audio_manager.play_sfx("dialogue_bip")
+
+            self.caracteres_affiches ← caracteres_cible
+
+            # Vérifier si toute la page est affichée
+            SI self.caracteres_affiches >= total_caracteres:
+                self.caracteres_affiches ← total_caracteres
+                self.texte_complet ← True
+
+        SINON:
+            # L'indicateur "suite" pulse
+            self.timer_indicateur ← self.timer_indicateur + dt
+            SI self.timer_indicateur >= 0.5:
+                self.timer_indicateur ← 0
+                self.indicateur_visible ← NOT self.indicateur_visible
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _get_texte_page_complet
+    # -----------------------------------------------------------------
+    #
+    # Renvoie tout le texte de la page actuelle concaténé.
+    # Sert pour compter les caractères et savoir quand le typewriter
+    # a fini.
+    #
+    # On met un caractère spécial entre les lignes pour savoir où
+    # couper à l'affichage. On utilise "\n" comme séparateur.
+
+    MÉTHODE _get_texte_page_complet(self):
+        page ← self.pages[self.page_actuelle]
+        RETOURNER "\n".join(page)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : avancer
+    # -----------------------------------------------------------------
+    #
+    # Appelée quand le joueur appuie sur Espace/Entrée.
+    #
+    # Deux comportements :
+    #   1. Si le texte défile encore → tout afficher d'un coup (skip)
+    #   2. Si le texte est complet → passer à la page suivante
+    #
+    # Si on est à la dernière page et le texte est complet → dialogue terminé.
+    #
+    # Renvoie True si le dialogue est terminé, False sinon.
+
+    MÉTHODE avancer(self):
+        SI self.dialogue_termine:
+            RETOURNER True
+
+        SI NOT self.texte_complet:
+            # Skip : afficher tout le texte de la page d'un coup
+            texte_page ← self._get_texte_page_complet()
+            self.caracteres_affiches ← len(texte_page)
+            self.texte_complet ← True
+            RETOURNER False
+
+        # Le texte est complet → passer à la page suivante
+        self.page_actuelle ← self.page_actuelle + 1
+
+        SI self.page_actuelle >= len(self.pages):
+            # Plus de pages → dialogue terminé
+            self.dialogue_termine ← True
+            RETOURNER True
+
+        # Réinitialiser pour la nouvelle page
+        self.caracteres_affiches ← 0
+        self.timer_defilement ← 0
+        self.texte_complet ← False
+        self.indicateur_visible ← True
+        self.timer_indicateur ← 0
+
+        RETOURNER False
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : draw
+    # -----------------------------------------------------------------
+    #
+    # Dessine la boîte de dialogue sur l'écran.
+    #
+    # Étapes :
+    #   1. Dessiner le fond de la boîte (rectangle semi-transparent)
+    #   2. Dessiner la bordure
+    #   3. Dessiner le texte (seulement les caractères déjà révélés)
+    #   4. Dessiner l'indicateur "suite" si le texte est complet
+    #
+    # screen : la surface Pygame
+
+    MÉTHODE draw(self, screen):
+        SI self.dialogue_termine:
+            RETOURNER
+
+        # --- FOND ---
+        fond_surface ← pygame.Surface((self.boite_largeur, self.boite_hauteur))
+        fond_surface.fill(COULEUR_DIALOGUE_FOND)
+        fond_surface.set_alpha(230)    # légèrement transparent
+        screen.blit(fond_surface, (self.boite_x, self.boite_y))
+
+        # --- BORDURE ---
+        pygame.draw.rect(screen, COULEUR_DIALOGUE_BORDURE, self.boite_rect, EPAISSEUR_BORDURE)
+
+        # --- TEXTE ---
+        page ← self.pages[self.page_actuelle]
+        texte_complet ← self._get_texte_page_complet()
+
+        # Extraire les caractères à afficher
+        texte_visible ← texte_complet[:self.caracteres_affiches]
+
+        # Séparer en lignes pour l'affichage
+        lignes_visibles ← texte_visible.split("\n")
+
+        POUR i, ligne DANS enumerate(lignes_visibles):
+            SI ligne N'EST PAS vide:
+                surface_texte ← self.font.render(ligne, True, COULEUR_DIALOGUE_TEXTE)
+                pos_x ← self.boite_x + MARGE_X
+                pos_y ← self.boite_y + MARGE_Y + (i × (TAILLE_POLICE + 4))
+                screen.blit(surface_texte, (pos_x, pos_y))
+
+        # --- INDICATEUR "SUITE" ---
+        SI self.texte_complet ET self.indicateur_visible:
+            SI self.page_actuelle < len(self.pages) - 1:
+                # Pas la dernière page → triangle "suite"
+                self._dessiner_indicateur(screen)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _dessiner_indicateur
+    # -----------------------------------------------------------------
+    #
+    # Dessine le petit triangle qui pulse en bas à droite de la boîte.
+    # C'est un triangle pointant vers le bas, classique des RPG.
+
+    MÉTHODE _dessiner_indicateur(self):
+        centre_x ← self.boite_x + self.boite_largeur - MARGE_X - 10
+        centre_y ← self.boite_y + self.boite_hauteur - MARGE_Y - 5
+
+        points ← [
+            (centre_x - 6, centre_y - 6),
+            (centre_x + 6, centre_y - 6),
+            (centre_x, centre_y + 2)
+        ]
+
+        pygame.draw.polygon(screen, COULEUR_DIALOGUE_TEXTE, points)
+
+
+    # -----------------------------------------------------------------
+    # PROPRIÉTÉ : est_termine
+    # -----------------------------------------------------------------
+    #
+    # Raccourci pour vérifier si le dialogue est terminé.
+    # Utilisé par StateDialogue pour savoir quand se pop.
+
+    PROPRIÉTÉ est_termine:
+        RETOURNER self.dialogue_termine
