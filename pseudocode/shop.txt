@@ -1,0 +1,226 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+#
+# Pas d'import lourd ici. Le Shop reçoit tout ce dont il a besoin
+# en paramètre (le catalogue, le joueur). Il dépend d'aucun module
+# directement.
+
+
+# =============================================================================
+# CLASSE SHOP
+# =============================================================================
+#
+# Gère la logique d'achat de la boutique.
+# Reçoit le catalogue d'objets et le joueur, effectue les transactions.
+
+CLASSE Shop:
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+    #
+    # item_catalog : l'objet ItemCatalog (toutes les fiches d'objets)
+    # player : l'objet Player (pour accéder aux crédits et à l'inventaire)
+    #
+    # On construit la liste des objets achetables une fois à l'ouverture
+    # de la boutique. Comme ça on fait le filtrage qu'une seule fois.
+
+    MÉTHODE __init__(self, item_catalog, player):
+        self.item_catalog ← item_catalog
+        self.player ← player
+
+        # Construire le catalogue de la boutique
+        self.catalogue ← item_catalog.get_buyable_items()
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_catalogue
+    # -----------------------------------------------------------------
+    #
+    # Renvoie la liste des objets disponibles à l'achat.
+    # Chaque entrée est un objet Item avec toutes ses propriétés
+    # (nom, description, prix, effet, etc.).
+    #
+    # Utilisé par state_shop.py pour construire l'affichage de la
+    # boutique. L'UI itère sur cette liste et affiche chaque objet
+    # avec son prix et la quantité déjà possédée par le joueur.
+
+    MÉTHODE get_catalogue(self):
+        RETOURNER self.catalogue
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_credits_joueur
+    # -----------------------------------------------------------------
+    #
+    # Renvoie le nombre de crédits actuels du joueur.
+    # Utilisé par state_shop.py pour afficher "Crédits : 150"
+    # en haut de l'écran de la boutique.
+    #
+    # On passe par une méthode plutôt que d'accéder directement
+    # à player.credits parce que si demain on change comment les
+    # crédits sont stockés (dans un CreditsManager par exemple),
+    # on modifie que cette méthode.
+
+    MÉTHODE get_credits_joueur(self):
+        RETOURNER self.player.credits
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_quantite_possedee
+    # -----------------------------------------------------------------
+    #
+    # Renvoie la quantité d'un objet que le joueur possède déjà.
+    # Affiché à côté du prix dans la boutique : "Potion — 25 crédits (x3)"
+    # pour que le joueur sache combien il en a avant d'acheter.
+    #
+    # item_id : l'id de l'objet
+
+    MÉTHODE get_quantite_possedee(self, item_id):
+        RETOURNER self.player.inventory.get_quantite(item_id)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : peut_acheter
+    # -----------------------------------------------------------------
+    #
+    # Vérifie si le joueur peut acheter un objet donné.
+    # Conditions :
+    #   1. L'objet existe dans le catalogue
+    #   2. Le joueur a assez de crédits
+    #
+    # Renvoie True si l'achat est possible, False sinon.
+    #
+    # Utilisé par state_shop.py pour griser les objets trop chers
+    # dans l'affichage. Le joueur voit directement ce qu'il peut
+    # ou peut pas se payer.
+    #
+    # item_id : l'id de l'objet à vérifier
+
+    MÉTHODE peut_acheter(self, item_id):
+        item ← self.item_catalog.get_item(item_id)
+
+        SI item EST None:
+            RETOURNER False
+
+        SI NOT item.buyable:
+            RETOURNER False
+
+        RETOURNER self.player.credits >= item.price
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : acheter
+    # -----------------------------------------------------------------
+    #
+    # Effectue l'achat d'un objet.
+    #
+    # C'est LA méthode principale de la boutique. Elle :
+    #   1. Vérifie que l'achat est possible
+    #   2. Déduit les crédits
+    #   3. Ajoute l'objet à l'inventaire
+    #
+    # Renvoie un dictionnaire avec le résultat :
+    #   {
+    #       "succes": bool,
+    #       "item": objet Item ou None,
+    #       "prix_paye": int,
+    #       "credits_restants": int,
+    #       "raison_echec": string ou None
+    #   }
+    #
+    # Pourquoi renvoyer un dictionnaire ? Parce que state_shop.py
+    # a besoin de savoir :
+    #   - Si ça a marché → afficher "Merci pour votre achat !"
+    #   - Si pas assez de crédits → afficher "Pas assez de crédits"
+    #   - Combien de crédits il reste → mettre à jour l'affichage
+    #
+    # item_id : l'id de l'objet à acheter
+
+    MÉTHODE acheter(self, item_id):
+        item ← self.item_catalog.get_item(item_id)
+
+        # Vérification : l'objet existe ?
+        SI item EST None:
+            RETOURNER {
+                "succes": False,
+                "item": None,
+                "prix_paye": 0,
+                "credits_restants": self.player.credits,
+                "raison_echec": "objet_inconnu"
+            }
+
+        # Vérification : l'objet est achetable ?
+        SI NOT item.buyable:
+            RETOURNER {
+                "succes": False,
+                "item": item,
+                "prix_paye": 0,
+                "credits_restants": self.player.credits,
+                "raison_echec": "non_achetable"
+            }
+
+        # Vérification : assez de crédits ?
+        SI self.player.credits < item.price:
+            RETOURNER {
+                "succes": False,
+                "item": item,
+                "prix_paye": 0,
+                "credits_restants": self.player.credits,
+                "raison_echec": "pas_assez_credits"
+            }
+
+        # Tout est ok → effectuer la transaction
+        self.player.credits ← self.player.credits - item.price
+        self.player.inventory.ajouter(item.id)
+
+        RETOURNER {
+            "succes": True,
+            "item": item,
+            "prix_paye": item.price,
+            "credits_restants": self.player.credits,
+            "raison_echec": None
+        }
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_item_info
+    # -----------------------------------------------------------------
+    #
+    # Renvoie les informations complètes d'un objet pour l'affichage
+    # détaillé dans la boutique.
+    #
+    # Quand le joueur met son curseur sur un objet, on affiche
+    # sa description, son effet, son prix, et combien il en possède.
+    #
+    # Renvoie un dictionnaire avec toutes ces infos, ou None si
+    # l'objet existe pas.
+    #
+    # item_id : l'id de l'objet
+
+    MÉTHODE get_item_info(self, item_id):
+        item ← self.item_catalog.get_item(item_id)
+
+        SI item EST None:
+            RETOURNER None
+
+        RETOURNER {
+            "item": item,
+            "nom": item.name,
+            "description": item.get_description_formatee(),
+            "prix": item.price,
+            "quantite_possedee": self.get_quantite_possedee(item.id),
+            "peut_acheter": self.peut_acheter(item.id),
+            "credits_joueur": self.player.credits
+        }
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE SPÉCIALE : __str__
+    # -----------------------------------------------------------------
+
+    MÉTHODE __str__(self):
+        RETOURNER "Boutique ({} objets) — Crédits du joueur : {}".format(
+            len(self.catalogue), self.player.credits
+        )
