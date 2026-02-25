@@ -1,0 +1,503 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+#
+# State : la classe de base dont on hérite
+# pygame : pour les inputs et le rendu
+# Player : pour créer le joueur quand il commence une nouvelle partie
+# settings : pour les dimensions, couleurs, noms des dresseurs
+
+importer pygame
+importer State depuis states.state
+importer Player depuis entities.player
+importer (SCREEN_WIDTH, SCREEN_HEIGHT,
+         NOMS_DRESSEURS) depuis config.settings
+
+
+# =============================================================================
+# CONSTANTES LOCALES
+# =============================================================================
+
+MODE_PRINCIPAL ← "principal"
+MODE_CHOIX_DRESSEUR ← "choix_dresseur"
+MODE_CHOIX_SLOT ← "choix_slot"
+
+
+# =============================================================================
+# CLASSE STATE MENU
+# =============================================================================
+#
+# Premier écran du jeu. Menu principal avec Nouvelle Partie / Continuer / Quitter.
+# Hérite de State. Implémente handle_events(), update(), render().
+
+CLASSE StateMenu (hérite de State):
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+    #
+    # game_manager : référence vers l'objet Game.
+    #
+    # On initialise les polices, les options du menu, le mode,
+    # et on vérifie s'il y a des sauvegardes disponibles.
+
+    MÉTHODE __init__(self, game_manager):
+        super().__init__(game_manager)
+
+        # --- POLICES ---
+        self.font_titre ← pygame.font.Font(None, 60)
+        self.font_menu ← pygame.font.Font(None, 32)
+        self.font_info ← pygame.font.Font(None, 22)
+
+        # --- MODE ET CURSEUR ---
+        self.mode ← MODE_PRINCIPAL
+        self.selection_index ← 0
+
+        # --- OPTIONS DU MENU PRINCIPAL ---
+        self.options_principales ← ["Nouvelle Partie", "Continuer", "Quitter"]
+
+        # --- SAUVEGARDES ---
+        # On vérifie si des sauvegardes existent pour griser "Continuer"
+        self.slots_info ← None
+        self.continuer_disponible ← False
+        self._charger_info_slots()
+
+        # --- DONNÉES DRESSEURS ---
+        # Les noms et descriptions des 2 dresseurs jouables
+        self.dresseurs ← [
+            {"id": 1, "name": NOMS_DRESSEURS[1], "desc": "Un étudiant déterminé"},
+            {"id": 2, "name": NOMS_DRESSEURS[2], "desc": "Une étudiante audacieuse"}
+        ]
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _charger_info_slots
+    # -----------------------------------------------------------------
+    #
+    # Interroge le save_manager pour obtenir les infos des 3 slots.
+    # Détermine si le bouton "Continuer" est disponible.
+    #
+    # On fait ça au constructeur et pas à chaque frame parce que
+    # les sauvegardes changent pas pendant qu'on est dans le menu
+    # (sauf si le joueur revient au menu après avoir joué, mais
+    # dans ce cas le StateMenu est recréé).
+
+    MÉTHODE _charger_info_slots(self):
+        ESSAYER:
+            importer SaveManager depuis core.save_manager
+
+            save_manager ← SaveManager()
+            self.slots_info ← save_manager.get_all_slots_info()
+
+            # Vérifier si au moins un slot est occupé
+            self.continuer_disponible ← False
+            POUR CHAQUE slot DANS self.slots_info:
+                SI slot EST NOT None ET slot["occupied"]:
+                    self.continuer_disponible ← True
+                    SORTIR DE LA BOUCLE
+
+        EN CAS D'ERREUR:
+            self.slots_info ← [None, None, None]
+            self.continuer_disponible ← False
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : on_enter
+    # -----------------------------------------------------------------
+    #
+    # Appelée quand le StateMenu devient l'état actif.
+    # Lance la musique du menu.
+
+    MÉTHODE on_enter(self):
+        self.game_manager.audio_manager.play_music("menu")
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : handle_events
+    # -----------------------------------------------------------------
+    #
+    # Gère les inputs du joueur selon le mode actuel.
+    #
+    # events : la liste des événements Pygame de cette frame
+
+    MÉTHODE handle_events(self, events):
+        POUR CHAQUE event DANS events:
+            SI event.type != pygame.KEYDOWN:
+                CONTINUER
+
+            SI self.mode == MODE_PRINCIPAL:
+                self._handle_principal(event)
+
+            SINON SI self.mode == MODE_CHOIX_DRESSEUR:
+                self._handle_choix_dresseur(event)
+
+            SINON SI self.mode == MODE_CHOIX_SLOT:
+                self._handle_choix_slot(event)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _handle_principal
+    # -----------------------------------------------------------------
+    #
+    # Gère les inputs du menu principal.
+    # Flèches haut/bas pour naviguer, Espace/Entrée pour valider.
+
+    MÉTHODE _handle_principal(self, event):
+        SI event.key == pygame.K_UP:
+            self.selection_index ← max(0, self.selection_index - 1)
+            self.game_manager.audio_manager.play_sfx("menu_select")
+
+        SI event.key == pygame.K_DOWN:
+            self.selection_index ← min(len(self.options_principales) - 1, self.selection_index + 1)
+            self.game_manager.audio_manager.play_sfx("menu_select")
+
+        SI event.key EST dans [pygame.K_SPACE, pygame.K_RETURN]:
+
+            # --- NOUVELLE PARTIE ---
+            SI self.selection_index == 0:
+                self.mode ← MODE_CHOIX_DRESSEUR
+                self.selection_index ← 0
+
+            # --- CONTINUER ---
+            SI self.selection_index == 1:
+                SI self.continuer_disponible:
+                    self.mode ← MODE_CHOIX_SLOT
+                    self.selection_index ← 0
+
+            # --- QUITTER ---
+            SI self.selection_index == 2:
+                self.game_manager.running ← False
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _handle_choix_dresseur
+    # -----------------------------------------------------------------
+    #
+    # Gère les inputs de l'écran de choix du dresseur.
+    # Flèches gauche/droite pour choisir entre les 2 dresseurs.
+    # Espace/Entrée pour valider.
+    # Échap pour revenir au menu principal.
+
+    MÉTHODE _handle_choix_dresseur(self, event):
+        SI event.key == pygame.K_LEFT:
+            self.selection_index ← 0
+            self.game_manager.audio_manager.play_sfx("menu_select")
+
+        SI event.key == pygame.K_RIGHT:
+            self.selection_index ← 1
+            self.game_manager.audio_manager.play_sfx("menu_select")
+
+        SI event.key == pygame.K_ESCAPE:
+            self.mode ← MODE_PRINCIPAL
+            self.selection_index ← 0
+
+        SI event.key EST dans [pygame.K_SPACE, pygame.K_RETURN]:
+            self._lancer_nouvelle_partie(self.dresseurs[self.selection_index])
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _handle_choix_slot
+    # -----------------------------------------------------------------
+    #
+    # Gère les inputs de l'écran de sélection de sauvegarde.
+    # Flèches haut/bas pour choisir un slot.
+    # Espace/Entrée pour charger.
+    # Échap pour revenir.
+
+    MÉTHODE _handle_choix_slot(self, event):
+        SI event.key == pygame.K_UP:
+            self.selection_index ← max(0, self.selection_index - 1)
+            self.game_manager.audio_manager.play_sfx("menu_select")
+
+        SI event.key == pygame.K_DOWN:
+            self.selection_index ← min(2, self.selection_index + 1)
+            self.game_manager.audio_manager.play_sfx("menu_select")
+
+        SI event.key == pygame.K_ESCAPE:
+            self.mode ← MODE_PRINCIPAL
+            self.selection_index ← 1    # revenir sur "Continuer"
+
+        SI event.key EST dans [pygame.K_SPACE, pygame.K_RETURN]:
+            slot ← self.slots_info[self.selection_index]
+            SI slot EST NOT None ET slot["occupied"]:
+                self._charger_sauvegarde(self.selection_index)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _lancer_nouvelle_partie
+    # -----------------------------------------------------------------
+    #
+    # Crée un nouveau joueur et lance l'exploration.
+    #
+    # dresseur_data : le dictionnaire du dresseur choisi
+    #   {"id": 1, "name": "Axel", "desc": "..."}
+    #
+    # Étapes :
+    #   1. Créer le Player avec le dresseur choisi
+    #   2. Créer le ItemCatalog et l'Inventory
+    #   3. Créer le QuestManager
+    #   4. Attacher tout au game_manager
+    #   5. Remplacer le StateMenu par StateExploration
+
+    MÉTHODE _lancer_nouvelle_partie(self, dresseur_data):
+        importer ItemCatalog depuis entities.item
+        importer Inventory depuis entities.inventory
+        importer QuestManager depuis economy.quest
+
+        # Créer le catalogue d'objets
+        item_catalog ← ItemCatalog()
+        self.game_manager.item_catalog ← item_catalog
+
+        # Créer le joueur
+        player ← Player(
+            character_id=dresseur_data["id"],
+            name=dresseur_data["name"]
+        )
+
+        # Créer l'inventaire (dépend du catalogue)
+        player.inventory ← Inventory(item_catalog)
+
+        # Attacher le joueur au game_manager
+        self.game_manager.player ← player
+
+        # Créer le quest manager
+        self.game_manager.quest_manager ← QuestManager()
+
+        # Lancer l'exploration
+        importer StateExploration depuis states.state_exploration
+
+        state_exploration ← StateExploration(self.game_manager)
+        self.game_manager.state_manager.change(state_exploration)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _charger_sauvegarde
+    # -----------------------------------------------------------------
+    #
+    # Charge une sauvegarde et lance l'exploration.
+    #
+    # slot_index : 0, 1 ou 2 (le slot choisi)
+    #
+    # Étapes :
+    #   1. Charger le JSON de sauvegarde via save_manager
+    #   2. Recréer le Player depuis les données
+    #   3. Restaurer le temps du cycle jour/nuit
+    #   4. Attacher tout au game_manager
+    #   5. Remplacer le StateMenu par StateExploration
+
+    MÉTHODE _charger_sauvegarde(self, slot_index):
+        importer SaveManager depuis core.save_manager
+        importer ItemCatalog depuis entities.item
+        importer Inventory depuis entities.inventory
+        importer QuestManager depuis economy.quest
+
+        ESSAYER:
+            save_manager ← SaveManager()
+            data ← save_manager.load(slot_index)
+
+            SI data EST None:
+                RETOURNER    # slot vide ou erreur
+
+            # Créer le catalogue
+            item_catalog ← ItemCatalog()
+            self.game_manager.item_catalog ← item_catalog
+
+            # Recréer le joueur depuis la sauvegarde
+            player ← Player.from_save(data)
+
+            # Recréer l'inventaire depuis la sauvegarde
+            player.inventory ← Inventory.from_dict(
+                data.get("inventory", {}), item_catalog
+            )
+
+            # Attacher au game_manager
+            self.game_manager.player ← player
+            self.game_manager.save_slot_actuel ← slot_index
+
+            # Restaurer le cycle jour/nuit
+            SI "day_night_time" EST dans data:
+                self.game_manager.day_night_cycle.set_time(data["day_night_time"])
+
+            # Créer le quest manager
+            self.game_manager.quest_manager ← QuestManager()
+
+            # Lancer l'exploration
+            importer StateExploration depuis states.state_exploration
+
+            state_exploration ← StateExploration(self.game_manager)
+            self.game_manager.state_manager.change(state_exploration)
+
+        EN CAS D'ERREUR comme e:
+            afficher erreur ("Erreur de chargement : " + str(e))
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : update
+    # -----------------------------------------------------------------
+    #
+    # Pas grand chose à mettre à jour dans le menu.
+    # On pourrait animer le titre (pulsation, rotation) ou un
+    # fond animé, mais c'est du polish.
+
+    MÉTHODE update(self, dt):
+        passer
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : render
+    # -----------------------------------------------------------------
+    #
+    # Dessine l'écran du menu selon le mode actuel.
+
+    MÉTHODE render(self, screen):
+        # Fond
+        screen.fill((20, 20, 40))    # bleu très sombre
+
+        SI self.mode == MODE_PRINCIPAL:
+            self._draw_principal(screen)
+
+        SINON SI self.mode == MODE_CHOIX_DRESSEUR:
+            self._draw_choix_dresseur(screen)
+
+        SINON SI self.mode == MODE_CHOIX_SLOT:
+            self._draw_choix_slot(screen)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _draw_principal
+    # -----------------------------------------------------------------
+    #
+    # Dessine le menu principal avec le titre et les 3 options.
+
+    MÉTHODE _draw_principal(self, screen):
+        # --- TITRE ---
+        surface_titre ← self.font_titre.render("Pokémon La Plateforme", True, (255, 255, 255))
+        pos_titre_x ← (SCREEN_WIDTH - surface_titre.get_width()) / 2
+        screen.blit(surface_titre, (pos_titre_x, 150))
+
+        # --- OPTIONS ---
+        POUR i, option DANS enumerate(self.options_principales):
+            # Griser "Continuer" si pas de sauvegarde
+            SI i == 1 ET NOT self.continuer_disponible:
+                couleur ← (100, 100, 100)
+            SINON:
+                couleur ← (255, 255, 255)
+
+            prefixe ← "> " SI i == self.selection_index SINON "  "
+            texte ← prefixe + option
+            surface ← self.font_menu.render(texte, True, couleur)
+            pos_x ← (SCREEN_WIDTH - surface.get_width()) / 2
+            pos_y ← 350 + i × 50
+            screen.blit(surface, (pos_x, pos_y))
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _draw_choix_dresseur
+    # -----------------------------------------------------------------
+    #
+    # Dessine l'écran de choix du dresseur.
+    # Deux cadres côte à côte avec le sprite, le nom et la description
+    # de chaque dresseur. Le dresseur sélectionné est mis en surbrillance.
+
+    MÉTHODE _draw_choix_dresseur(self, screen):
+        # Titre
+        surface_titre ← self.font_menu.render("Choisis ton dresseur", True, (255, 255, 255))
+        pos_x ← (SCREEN_WIDTH - surface_titre.get_width()) / 2
+        screen.blit(surface_titre, (pos_x, 100))
+
+        # Deux cadres
+        POUR i, dresseur DANS enumerate(self.dresseurs):
+            cadre_x ← 150 + i × 380
+            cadre_y ← 200
+            cadre_largeur ← 300
+            cadre_hauteur ← 300
+
+            # Couleur de bordure selon la sélection
+            SI i == self.selection_index:
+                couleur_bordure ← (255, 220, 50)    # doré = sélectionné
+                epaisseur ← 4
+            SINON:
+                couleur_bordure ← (100, 100, 100)
+                epaisseur ← 2
+
+            # Cadre
+            pygame.draw.rect(screen, couleur_bordure,
+                (cadre_x, cadre_y, cadre_largeur, cadre_hauteur), epaisseur)
+
+            # Nom du dresseur
+            surface_nom ← self.font_menu.render(dresseur["name"], True, (255, 255, 255))
+            nom_x ← cadre_x + (cadre_largeur - surface_nom.get_width()) / 2
+            screen.blit(surface_nom, (nom_x, cadre_y + 180))
+
+            # Description
+            surface_desc ← self.font_info.render(dresseur["desc"], True, (200, 200, 200))
+            desc_x ← cadre_x + (cadre_largeur - surface_desc.get_width()) / 2
+            screen.blit(surface_desc, (desc_x, cadre_y + 220))
+
+            # Placeholder pour le sprite (carré coloré en attendant les assets)
+            sprite_rect ← pygame.Rect(cadre_x + 100, cadre_y + 30, 100, 120)
+            pygame.draw.rect(screen, (150, 150, 255), sprite_rect)
+
+        # Indication
+        surface_hint ← self.font_info.render("[Flèches] Choisir  [Entrée] Valider  [Échap] Retour", True, (150, 150, 150))
+        hint_x ← (SCREEN_WIDTH - surface_hint.get_width()) / 2
+        screen.blit(surface_hint, (hint_x, 550))
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _draw_choix_slot
+    # -----------------------------------------------------------------
+    #
+    # Dessine l'écran de sélection de sauvegarde.
+    # 3 cadres empilés verticalement, chacun montrant les infos du slot.
+
+    MÉTHODE _draw_choix_slot(self, screen):
+        # Titre
+        surface_titre ← self.font_menu.render("Choisir une sauvegarde", True, (255, 255, 255))
+        pos_x ← (SCREEN_WIDTH - surface_titre.get_width()) / 2
+        screen.blit(surface_titre, (pos_x, 80))
+
+        POUR i DE 0 À 2:
+            slot ← self.slots_info[i]
+            cadre_x ← 200
+            cadre_y ← 150 + i × 140
+            cadre_largeur ← SCREEN_WIDTH - 400
+            cadre_hauteur ← 110
+
+            # Couleur selon sélection et occupation
+            SI i == self.selection_index:
+                couleur_bordure ← (255, 220, 50)
+                epaisseur ← 3
+            SINON:
+                couleur_bordure ← (100, 100, 100)
+                epaisseur ← 2
+
+            # Cadre
+            pygame.draw.rect(screen, couleur_bordure,
+                (cadre_x, cadre_y, cadre_largeur, cadre_hauteur), epaisseur)
+
+            SI slot EST NOT None ET slot["occupied"]:
+                # Slot occupé → afficher les infos
+                texte_nom ← "Slot {} — {}".format(i + 1, slot.get("trainer_name", "???"))
+                surface_nom ← self.font_menu.render(texte_nom, True, (255, 255, 255))
+                screen.blit(surface_nom, (cadre_x + 20, cadre_y + 15))
+
+                # Détails
+                details ← "Zone: {} — Pokémon: {} — Temps: {}".format(
+                    slot.get("zone", "?"),
+                    slot.get("team_size", "?"),
+                    slot.get("play_time_formatted", "?")
+                )
+                surface_details ← self.font_info.render(details, True, (200, 200, 200))
+                screen.blit(surface_details, (cadre_x + 20, cadre_y + 55))
+
+            SINON:
+                # Slot vide
+                texte_vide ← "Slot {} — Vide".format(i + 1)
+                surface_vide ← self.font_menu.render(texte_vide, True, (100, 100, 100))
+                screen.blit(surface_vide, (cadre_x + 20, cadre_y + 35))
+
+        # Indication
+        surface_hint ← self.font_info.render("[Flèches] Choisir  [Entrée] Charger  [Échap] Retour", True, (150, 150, 150))
+        hint_x ← (SCREEN_WIDTH - surface_hint.get_width()) / 2
+        screen.blit(surface_hint, (hint_x, 590))
