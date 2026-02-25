@@ -1,0 +1,637 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+
+importer pygame
+importer State depuis states.state
+importer PokemonCenter depuis economy.pokemon_center
+importer (SCREEN_WIDTH, SCREEN_HEIGHT) depuis config.settings
+
+
+# =============================================================================
+# CONSTANTES LOCALES
+# =============================================================================
+
+PANNEAU_EQUIPE ← "equipe"
+PANNEAU_STOCKAGE ← "stockage"
+MODE_NORMAL ← "normal"
+MODE_ECHANGE ← "echange"
+DUREE_MESSAGE ← 1.5
+POKEMON_PAR_PAGE ← 6          # visible dans chaque panneau
+
+
+# =============================================================================
+# CLASSE STATE POKEMON CENTER
+# =============================================================================
+
+CLASSE StatePokemonCenter (hérite de State):
+
+    transparent ← False
+
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+
+    MÉTHODE __init__(self, game_manager):
+        super().__init__(game_manager)
+
+        # --- POLICES ---
+        self.font_titre ← pygame.font.Font(None, 36)
+        self.font_pokemon ← pygame.font.Font(None, 24)
+        self.font_info ← pygame.font.Font(None, 20)
+        self.font_message ← pygame.font.Font(None, 28)
+
+        # --- LOGIQUE ---
+        self.pokemon_center ← PokemonCenter(game_manager.player)
+        self.player ← game_manager.player
+
+        # --- NAVIGATION ---
+        self.panneau_actif ← PANNEAU_EQUIPE
+        self.index_equipe ← 0
+        self.index_stockage ← 0
+        self.scroll_stockage ← 0    # scroll pour le stockage (peut être long)
+
+        # --- MODE ---
+        self.mode ← MODE_NORMAL
+        self.echange_source_panneau ← None
+        self.echange_source_index ← None
+
+        # --- MESSAGE ---
+        self.message_temporaire ← None
+        self.message_timer ← 0
+        self.message_couleur ← (255, 255, 255)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : on_enter
+    # -----------------------------------------------------------------
+
+    MÉTHODE on_enter(self):
+        # Pas de musique spéciale, on garde celle de la zone
+        passer
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : handle_events
+    # -----------------------------------------------------------------
+
+    MÉTHODE handle_events(self, events):
+        POUR CHAQUE event DANS events:
+            SI event.type != pygame.KEYDOWN:
+                CONTINUER
+
+            SI self.mode == MODE_NORMAL:
+                self._handle_normal(event)
+            SINON SI self.mode == MODE_ECHANGE:
+                self._handle_echange(event)
+
+
+    # -----------------------------------------------------------------
+    # HANDLE MODE NORMAL
+    # -----------------------------------------------------------------
+
+    MÉTHODE _handle_normal(self, event):
+
+        # --- QUITTER ---
+        SI event.key == pygame.K_ESCAPE:
+            self.game_manager.state_manager.pop()
+            RETOURNER
+
+        # --- CHANGER DE PANNEAU ---
+        SI event.key == pygame.K_LEFT:
+            self.panneau_actif ← PANNEAU_EQUIPE
+            self.game_manager.audio_manager.play_sfx("menu_select")
+
+        SINON SI event.key == pygame.K_RIGHT:
+            self.panneau_actif ← PANNEAU_STOCKAGE
+            self.game_manager.audio_manager.play_sfx("menu_select")
+
+        # --- NAVIGUER DANS LE PANNEAU ---
+        SINON SI event.key == pygame.K_UP:
+            self._naviguer_panneau(-1)
+
+        SINON SI event.key == pygame.K_DOWN:
+            self._naviguer_panneau(1)
+
+        # --- DÉPOSER (D) ---
+        SINON SI event.key == pygame.K_d:
+            self._tenter_depot()
+
+        # --- RETIRER (R) ---
+        SINON SI event.key == pygame.K_r:
+            self._tenter_retrait()
+
+        # --- ÉCHANGER (E) ---
+        SINON SI event.key == pygame.K_e:
+            self._commencer_echange()
+
+
+    # -----------------------------------------------------------------
+    # HANDLE MODE ÉCHANGE
+    # -----------------------------------------------------------------
+
+    MÉTHODE _handle_echange(self, event):
+
+        # --- ANNULER ---
+        SI event.key == pygame.K_ESCAPE:
+            self.mode ← MODE_NORMAL
+            self.echange_source_panneau ← None
+            self.echange_source_index ← None
+            RETOURNER
+
+        # --- CHANGER DE PANNEAU ---
+        SI event.key == pygame.K_LEFT:
+            self.panneau_actif ← PANNEAU_EQUIPE
+        SINON SI event.key == pygame.K_RIGHT:
+            self.panneau_actif ← PANNEAU_STOCKAGE
+
+        # --- NAVIGUER ---
+        SINON SI event.key == pygame.K_UP:
+            self._naviguer_panneau(-1)
+        SINON SI event.key == pygame.K_DOWN:
+            self._naviguer_panneau(1)
+
+        # --- CONFIRMER L'ÉCHANGE ---
+        SINON SI event.key EST dans [pygame.K_e, pygame.K_SPACE, pygame.K_RETURN]:
+            self._confirmer_echange()
+
+
+    # -----------------------------------------------------------------
+    # NAVIGATION
+    # -----------------------------------------------------------------
+
+    MÉTHODE _naviguer_panneau(self, direction):
+        SI self.panneau_actif == PANNEAU_EQUIPE:
+            taille ← len(self.player.team.pokemons)
+            SI taille == 0:
+                RETOURNER
+            ancien ← self.index_equipe
+            self.index_equipe ← clamper(self.index_equipe + direction, 0, taille - 1)
+            SI self.index_equipe != ancien:
+                self.game_manager.audio_manager.play_sfx("menu_select")
+
+        SINON:
+            taille ← len(self.player.storage.pokemons)
+            SI taille == 0:
+                RETOURNER
+            ancien ← self.index_stockage
+            self.index_stockage ← clamper(self.index_stockage + direction, 0, taille - 1)
+            SI self.index_stockage != ancien:
+                self.game_manager.audio_manager.play_sfx("menu_select")
+
+            # Ajuster le scroll
+            SI self.index_stockage < self.scroll_stockage:
+                self.scroll_stockage ← self.index_stockage
+            SI self.index_stockage >= self.scroll_stockage + POKEMON_PAR_PAGE:
+                self.scroll_stockage ← self.index_stockage - POKEMON_PAR_PAGE + 1
+
+
+    # -----------------------------------------------------------------
+    # DÉPÔT (équipe → stockage)
+    # -----------------------------------------------------------------
+
+    MÉTHODE _tenter_depot(self):
+        SI self.panneau_actif != PANNEAU_EQUIPE:
+            RETOURNER
+        SI len(self.player.team.pokemons) == 0:
+            RETOURNER
+
+        pokemon ← self.player.team.pokemons[self.index_equipe]
+
+        # Pré-vérification
+        SI NOT self.pokemon_center.peut_deposer(pokemon):
+            self._afficher_message(
+                "Impossible ! Vous devez garder au moins 1 Pokémon valide.",
+                (255, 100, 100)
+            )
+            RETOURNER
+
+        # Effectuer le dépôt
+        resultat ← self.pokemon_center.deposer(pokemon)
+
+        SI resultat["succes"]:
+            self._afficher_message(
+                "{} déposé au stockage.".format(pokemon.nom),
+                (100, 255, 100)
+            )
+            # Ajuster le curseur si nécessaire
+            SI self.index_equipe >= len(self.player.team.pokemons):
+                self.index_equipe ← max(0, len(self.player.team.pokemons) - 1)
+        SINON:
+            self._afficher_message(resultat["raison"], (255, 100, 100))
+
+
+    # -----------------------------------------------------------------
+    # RETRAIT (stockage → équipe)
+    # -----------------------------------------------------------------
+
+    MÉTHODE _tenter_retrait(self):
+        SI self.panneau_actif != PANNEAU_STOCKAGE:
+            RETOURNER
+        SI len(self.player.storage.pokemons) == 0:
+            RETOURNER
+
+        pokemon ← self.player.storage.pokemons[self.index_stockage]
+
+        # Pré-vérification
+        SI NOT self.pokemon_center.peut_retirer(pokemon):
+            self._afficher_message(
+                "L'équipe est pleine ! (max 6)",
+                (255, 100, 100)
+            )
+            RETOURNER
+
+        # Effectuer le retrait
+        resultat ← self.pokemon_center.retirer_du_stockage(pokemon)
+
+        SI resultat["succes"]:
+            self._afficher_message(
+                "{} rejoint l'équipe !".format(pokemon.nom),
+                (100, 255, 100)
+            )
+            # Ajuster le curseur
+            SI self.index_stockage >= len(self.player.storage.pokemons):
+                self.index_stockage ← max(0, len(self.player.storage.pokemons) - 1)
+        SINON:
+            self._afficher_message(resultat["raison"], (255, 100, 100))
+
+
+    # -----------------------------------------------------------------
+    # ÉCHANGE (swap équipe ↔ stockage)
+    # -----------------------------------------------------------------
+
+    MÉTHODE _commencer_echange(self):
+        # Marquer le Pokémon source
+        SI self.panneau_actif == PANNEAU_EQUIPE:
+            SI len(self.player.team.pokemons) == 0:
+                RETOURNER
+            self.echange_source_panneau ← PANNEAU_EQUIPE
+            self.echange_source_index ← self.index_equipe
+        SINON:
+            SI len(self.player.storage.pokemons) == 0:
+                RETOURNER
+            self.echange_source_panneau ← PANNEAU_STOCKAGE
+            self.echange_source_index ← self.index_stockage
+
+        # Passer dans l'autre panneau
+        SI self.panneau_actif == PANNEAU_EQUIPE:
+            self.panneau_actif ← PANNEAU_STOCKAGE
+        SINON:
+            self.panneau_actif ← PANNEAU_EQUIPE
+
+        self.mode ← MODE_ECHANGE
+        self._afficher_message(
+            "Choisissez le Pokémon à échanger, puis [E] pour confirmer",
+            (200, 200, 255)
+        )
+
+
+    MÉTHODE _confirmer_echange(self):
+        # Déterminer les deux Pokémon
+        SI self.echange_source_panneau == PANNEAU_EQUIPE:
+            pokemon_equipe ← self.player.team.pokemons[self.echange_source_index]
+            SI self.panneau_actif != PANNEAU_STOCKAGE:
+                self._afficher_message("Sélectionnez un Pokémon du stockage", (255, 200, 100))
+                RETOURNER
+            SI len(self.player.storage.pokemons) == 0:
+                RETOURNER
+            pokemon_stockage ← self.player.storage.pokemons[self.index_stockage]
+
+        SINON:
+            pokemon_stockage ← self.player.storage.pokemons[self.echange_source_index]
+            SI self.panneau_actif != PANNEAU_EQUIPE:
+                self._afficher_message("Sélectionnez un Pokémon de l'équipe", (255, 200, 100))
+                RETOURNER
+            SI len(self.player.team.pokemons) == 0:
+                RETOURNER
+            pokemon_equipe ← self.player.team.pokemons[self.index_equipe]
+
+        # Pré-vérification
+        SI NOT self.pokemon_center.peut_echanger(pokemon_equipe, pokemon_stockage):
+            self._afficher_message(
+                "Échange impossible ! L'équipe doit garder 1 Pokémon valide.",
+                (255, 100, 100)
+            )
+            self.mode ← MODE_NORMAL
+            self.echange_source_panneau ← None
+            RETOURNER
+
+        # Effectuer l'échange
+        resultat ← self.pokemon_center.echanger(pokemon_equipe, pokemon_stockage)
+
+        SI resultat["succes"]:
+            self._afficher_message(
+                "{} et {} ont été échangés !".format(pokemon_equipe.nom, pokemon_stockage.nom),
+                (100, 255, 100)
+            )
+        SINON:
+            self._afficher_message(resultat["raison"], (255, 100, 100))
+
+        # Retour au mode normal
+        self.mode ← MODE_NORMAL
+        self.echange_source_panneau ← None
+        self.echange_source_index ← None
+
+
+    # -----------------------------------------------------------------
+    # UTILITAIRES
+    # -----------------------------------------------------------------
+
+    MÉTHODE _afficher_message(self, texte, couleur):
+        self.message_temporaire ← texte
+        self.message_couleur ← couleur
+        self.message_timer ← DUREE_MESSAGE
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : update
+    # -----------------------------------------------------------------
+
+    MÉTHODE update(self, dt):
+        SI self.message_temporaire EST NOT None:
+            self.message_timer ← self.message_timer - dt
+            SI self.message_timer <= 0:
+                self.message_temporaire ← None
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : render
+    # -----------------------------------------------------------------
+
+    MÉTHODE render(self, screen):
+        screen.fill((25, 30, 45))
+
+        self._draw_titre(screen)
+        self._draw_panneau_equipe(screen)
+        self._draw_panneau_stockage(screen)
+        self._draw_separateur(screen)
+        self._draw_info_pokemon(screen)
+        self._draw_controles(screen)
+
+        SI self.message_temporaire EST NOT None:
+            self._draw_message(screen)
+
+
+    # -----------------------------------------------------------------
+    # RENDU : TITRE
+    # -----------------------------------------------------------------
+
+    MÉTHODE _draw_titre(self, screen):
+        surface ← self.font_titre.render("Centre Pokémon — Gestion", True, (255, 255, 255))
+        pos_x ← (SCREEN_WIDTH - surface.get_width()) / 2
+        screen.blit(surface, (pos_x, 15))
+
+
+    # -----------------------------------------------------------------
+    # RENDU : PANNEAU ÉQUIPE (gauche)
+    # -----------------------------------------------------------------
+    #
+    # Affiche les 6 slots de l'équipe (vides ou occupés).
+    # Le Pokémon sélectionné est en surbrillance.
+    # En mode échange, le Pokémon source est marqué différemment.
+
+    MÉTHODE _draw_panneau_equipe(self, screen):
+        # En-tête
+        couleur_titre ← (255, 220, 50) SI self.panneau_actif == PANNEAU_EQUIPE SINON (150, 150, 150)
+        surface_titre ← self.font_pokemon.render("Équipe ({}/6)".format(
+            len(self.player.team.pokemons)), True, couleur_titre)
+        screen.blit(surface_titre, (30, 55))
+
+        zone_x ← 20
+        zone_y ← 80
+        hauteur_ligne ← 40
+
+        POUR i DE 0 À 5:
+            y ← zone_y + i × hauteur_ligne
+
+            # Fond de sélection
+            SI self.panneau_actif == PANNEAU_EQUIPE ET i == self.index_equipe:
+                fond ← pygame.Rect(zone_x, y, SCREEN_WIDTH / 2 - 30, hauteur_ligne - 4)
+                pygame.draw.rect(screen, (50, 50, 80), fond)
+
+            # Marqueur d'échange
+            SI self.mode == MODE_ECHANGE ET self.echange_source_panneau == PANNEAU_EQUIPE ET i == self.echange_source_index:
+                fond ← pygame.Rect(zone_x, y, SCREEN_WIDTH / 2 - 30, hauteur_ligne - 4)
+                pygame.draw.rect(screen, (80, 60, 30), fond)
+
+            SI i < len(self.player.team.pokemons):
+                pokemon ← self.player.team.pokemons[i]
+                self._draw_pokemon_ligne(screen, pokemon, zone_x + 10, y, i + 1)
+            SINON:
+                texte ← "{}. (vide)".format(i + 1)
+                surface ← self.font_pokemon.render(texte, True, (80, 80, 80))
+                screen.blit(surface, (zone_x + 10, y + 5))
+
+
+    # -----------------------------------------------------------------
+    # RENDU : PANNEAU STOCKAGE (droite)
+    # -----------------------------------------------------------------
+    #
+    # Affiche les Pokémon du stockage avec scroll.
+
+    MÉTHODE _draw_panneau_stockage(self, screen):
+        panneau_x ← SCREEN_WIDTH / 2 + 10
+
+        # En-tête
+        couleur_titre ← (255, 220, 50) SI self.panneau_actif == PANNEAU_STOCKAGE SINON (150, 150, 150)
+        surface_titre ← self.font_pokemon.render("Stockage ({})".format(
+            len(self.player.storage.pokemons)), True, couleur_titre)
+        screen.blit(surface_titre, (panneau_x + 10, 55))
+
+        zone_y ← 80
+        hauteur_ligne ← 40
+        pokemons_stockage ← self.player.storage.pokemons
+
+        SI len(pokemons_stockage) == 0:
+            surface ← self.font_pokemon.render("(vide)", True, (80, 80, 80))
+            screen.blit(surface, (panneau_x + 20, zone_y + 10))
+            RETOURNER
+
+        debut ← self.scroll_stockage
+        fin ← min(debut + POKEMON_PAR_PAGE, len(pokemons_stockage))
+
+        POUR i DE debut À fin - 1:
+            pokemon ← pokemons_stockage[i]
+            y ← zone_y + (i - debut) × hauteur_ligne
+
+            # Fond de sélection
+            SI self.panneau_actif == PANNEAU_STOCKAGE ET i == self.index_stockage:
+                fond ← pygame.Rect(panneau_x, y, SCREEN_WIDTH / 2 - 30, hauteur_ligne - 4)
+                pygame.draw.rect(screen, (50, 50, 80), fond)
+
+            # Marqueur d'échange
+            SI self.mode == MODE_ECHANGE ET self.echange_source_panneau == PANNEAU_STOCKAGE ET i == self.echange_source_index:
+                fond ← pygame.Rect(panneau_x, y, SCREEN_WIDTH / 2 - 30, hauteur_ligne - 4)
+                pygame.draw.rect(screen, (80, 60, 30), fond)
+
+            self._draw_pokemon_ligne(screen, pokemon, panneau_x + 10, y, i + 1)
+
+        # Indicateurs de scroll
+        SI debut > 0:
+            surface ← self.font_info.render("▲ ...", True, (150, 150, 150))
+            screen.blit(surface, (panneau_x + 10, zone_y - 18))
+        SI fin < len(pokemons_stockage):
+            surface ← self.font_info.render("▼ ...", True, (150, 150, 150))
+            screen.blit(surface, (panneau_x + 10, zone_y + POKEMON_PAR_PAGE × hauteur_ligne))
+
+
+    # -----------------------------------------------------------------
+    # RENDU : UNE LIGNE POKÉMON
+    # -----------------------------------------------------------------
+    #
+    # Dessine une ligne résumée d'un Pokémon :
+    #   1. Flamèche  Nv.14  ♥ 45/52
+    #
+    # Utilisé par les deux panneaux.
+
+    MÉTHODE _draw_pokemon_ligne(self, screen, pokemon, x, y, numero):
+        # Nom et niveau
+        texte ← "{}. {} Nv.{}".format(numero, pokemon.nom, pokemon.niveau)
+        surface_nom ← self.font_pokemon.render(texte, True, (255, 255, 255))
+        screen.blit(surface_nom, (x, y + 5))
+
+        # Barre de PV mini
+        barre_x ← x + 250
+        barre_y ← y + 10
+        barre_largeur ← 80
+        barre_hauteur ← 10
+
+        ratio_pv ← pokemon.pv_actuels / pokemon.pv_max SI pokemon.pv_max > 0 SINON 0
+
+        # Couleur de la barre
+        SI ratio_pv > 0.5:
+            couleur_pv ← (100, 255, 100)
+        SINON SI ratio_pv > 0.2:
+            couleur_pv ← (255, 255, 50)
+        SINON:
+            couleur_pv ← (255, 50, 50)
+
+        # KO
+        SI pokemon.est_ko():
+            couleur_pv ← (100, 100, 100)
+
+        # Fond de la barre
+        pygame.draw.rect(screen, (60, 60, 60),
+            (barre_x, barre_y, barre_largeur, barre_hauteur))
+
+        # Remplissage
+        remplissage ← int(barre_largeur × ratio_pv)
+        SI remplissage > 0:
+            pygame.draw.rect(screen, couleur_pv,
+                (barre_x, barre_y, remplissage, barre_hauteur))
+
+        # Texte PV
+        texte_pv ← "{}/{}".format(pokemon.pv_actuels, pokemon.pv_max)
+        surface_pv ← self.font_info.render(texte_pv, True, (200, 200, 200))
+        screen.blit(surface_pv, (barre_x + barre_largeur + 5, y + 7))
+
+        # Tag KO
+        SI pokemon.est_ko():
+            surface_ko ← self.font_info.render("[KO]", True, (255, 80, 80))
+            screen.blit(surface_ko, (barre_x + barre_largeur + 60, y + 7))
+
+
+    # -----------------------------------------------------------------
+    # RENDU : SÉPARATEUR
+    # -----------------------------------------------------------------
+
+    MÉTHODE _draw_separateur(self, screen):
+        x ← SCREEN_WIDTH / 2
+        pygame.draw.line(screen, (80, 80, 120), (x, 50), (x, 330), 2)
+
+
+    # -----------------------------------------------------------------
+    # RENDU : INFO POKÉMON SÉLECTIONNÉ
+    # -----------------------------------------------------------------
+    #
+    # Panneau en bas montrant les détails du Pokémon sous le curseur.
+
+    MÉTHODE _draw_info_pokemon(self, screen):
+        # Trouver le Pokémon sélectionné
+        pokemon ← None
+
+        SI self.panneau_actif == PANNEAU_EQUIPE:
+            SI self.index_equipe < len(self.player.team.pokemons):
+                pokemon ← self.player.team.pokemons[self.index_equipe]
+        SINON:
+            SI self.index_stockage < len(self.player.storage.pokemons):
+                pokemon ← self.player.storage.pokemons[self.index_stockage]
+
+        # Cadre d'info
+        info_y ← 345
+        info_rect ← pygame.Rect(20, info_y, SCREEN_WIDTH - 40, 130)
+        pygame.draw.rect(screen, (35, 40, 55), info_rect)
+        pygame.draw.rect(screen, (80, 80, 120), info_rect, 2)
+
+        SI pokemon EST None:
+            surface ← self.font_pokemon.render("Aucun Pokémon sélectionné", True, (100, 100, 100))
+            screen.blit(surface, (40, info_y + 50))
+            RETOURNER
+
+        # Nom, niveau, type
+        texte_nom ← "{} — Nv.{} — Type: {}".format(
+            pokemon.nom, pokemon.niveau,
+            "/".join(pokemon.types)
+        )
+        surface_nom ← self.font_pokemon.render(texte_nom, True, (255, 255, 255))
+        screen.blit(surface_nom, (40, info_y + 10))
+
+        # Stats
+        texte_stats ← "PV: {}/{}  |  ATK: {}  |  DEF: {}  |  VIT: {}".format(
+            pokemon.pv_actuels, pokemon.pv_max,
+            pokemon.attaque, pokemon.defense, pokemon.vitesse
+        )
+        surface_stats ← self.font_info.render(texte_stats, True, (200, 200, 200))
+        screen.blit(surface_stats, (40, info_y + 40))
+
+        # Attaques
+        noms_attaques ← [a.nom POUR a DANS pokemon.attaques]
+        texte_attaques ← "Attaques: " + ", ".join(noms_attaques)
+        surface_atk ← self.font_info.render(texte_attaques, True, (180, 180, 220))
+        screen.blit(surface_atk, (40, info_y + 65))
+
+        # XP (si dans l'équipe)
+        SI self.panneau_actif == PANNEAU_EQUIPE:
+            texte_xp ← "XP: {}/{}".format(pokemon.xp_actuelle, pokemon.xp_pour_niveau_suivant)
+            surface_xp ← self.font_info.render(texte_xp, True, (150, 200, 255))
+            screen.blit(surface_xp, (40, info_y + 90))
+
+
+    # -----------------------------------------------------------------
+    # RENDU : CONTRÔLES
+    # -----------------------------------------------------------------
+
+    MÉTHODE _draw_controles(self, screen):
+        SI self.mode == MODE_NORMAL:
+            texte ← "[←→] Panneau  [↑↓] Naviguer  [D] Déposer  [R] Retirer  [E] Échanger  [Échap] Quitter"
+        SINON:
+            texte ← "[←→] Panneau  [↑↓] Naviguer  [E/Entrée] Confirmer  [Échap] Annuler"
+
+        surface ← self.font_info.render(texte, True, (120, 120, 120))
+        pos_x ← (SCREEN_WIDTH - surface.get_width()) / 2
+        screen.blit(surface, (pos_x, SCREEN_HEIGHT - 35))
+
+
+    # -----------------------------------------------------------------
+    # RENDU : MESSAGE TEMPORAIRE
+    # -----------------------------------------------------------------
+    #
+    # Même pattern que state_shop.py
+
+    MÉTHODE _draw_message(self, screen):
+        surface_texte ← self.font_message.render(
+            self.message_temporaire, True, self.message_couleur)
+
+        padding ← 20
+        fond_largeur ← surface_texte.get_width() + padding × 2
+        fond_hauteur ← surface_texte.get_height() + padding
+        fond ← pygame.Surface((fond_largeur, fond_hauteur))
+        fond.fill((0, 0, 0))
+        fond.set_alpha(200)
+
+        centre_x ← (SCREEN_WIDTH - fond_largeur) / 2
+        centre_y ← 300
+
+        screen.blit(fond, (centre_x, centre_y))
+        screen.blit(surface_texte, (centre_x + padding, centre_y + padding / 2))
