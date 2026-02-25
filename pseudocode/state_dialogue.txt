@@ -1,0 +1,168 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+
+importer pygame
+importer State depuis states.state
+importer DialogueBox depuis ui.dialogue_box
+
+
+# =============================================================================
+# CLASSE STATE DIALOGUE
+# =============================================================================
+#
+# État transparent qui affiche un dialogue par-dessus l'exploration.
+# Se pop quand le dialogue est terminé et exécute le callback du NPC.
+
+CLASSE StateDialogue (hérite de State):
+
+    # -----------------------------------------------------------------
+    # ATTRIBUT DE CLASSE
+    # -----------------------------------------------------------------
+    #
+    # transparent = True indique au state_manager qu'il doit
+    # rendre l'état en dessous avant celui-ci.
+
+    transparent ← True
+
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+    #
+    # game_manager : référence vers Game
+    # lignes : liste de strings, les lignes de dialogue à afficher
+    # npc : l'instance NPC (pour référence, pas obligatoire)
+    # callback : fonction à exécuter quand le dialogue se termine
+    #            signature : callback(player, game_manager)
+    #            peut être None
+
+    MÉTHODE __init__(self, game_manager, lignes, npc=None, callback=None):
+        super().__init__(game_manager)
+
+        self.npc ← npc
+        self.callback ← callback
+
+        # Créer la dialogue_box avec les lignes
+        self.dialogue_box ← DialogueBox(
+            lignes=lignes,
+            audio_manager=game_manager.audio_manager
+        )
+
+        # Flag pour éviter les doubles exécutions du callback
+        self.termine ← False
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : on_enter
+    # -----------------------------------------------------------------
+    #
+    # Rien de spécial à l'entrée. La musique de l'exploration
+    # continue de jouer pendant le dialogue.
+
+    MÉTHODE on_enter(self):
+        passer
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : handle_events
+    # -----------------------------------------------------------------
+    #
+    # Gère les inputs du joueur pendant le dialogue.
+    # Seul Espace/Entrée est accepté.
+
+    MÉTHODE handle_events(self, events):
+        SI self.termine:
+            RETOURNER
+
+        POUR CHAQUE event DANS events:
+            SI event.type != pygame.KEYDOWN:
+                CONTINUER
+
+            SI event.key EST dans [pygame.K_SPACE, pygame.K_RETURN]:
+                self._avancer_dialogue()
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _avancer_dialogue
+    # -----------------------------------------------------------------
+    #
+    # Fait avancer le dialogue d'un cran.
+    # Soit skip le typewriter, soit passe à la page suivante,
+    # soit termine le dialogue.
+
+    MÉTHODE _avancer_dialogue(self):
+        resultat ← self.dialogue_box.avancer()
+
+        SI resultat == "termine":
+            self._terminer_dialogue()
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _terminer_dialogue
+    # -----------------------------------------------------------------
+    #
+    # Le dialogue est fini. Exécuter le callback et se pop.
+    #
+    # L'ORDRE EST IMPORTANT :
+    #   1. Se pop d'abord (revenir à l'exploration)
+    #   2. Exécuter le callback ensuite
+    #
+    # Pourquoi dans cet ordre ? Parce que le callback peut pusher
+    # un nouvel état (la boutique, le centre Pokémon...). Si on
+    # exécutait le callback avant le pop, on aurait :
+    #   pile = [exploration, dialogue, boutique]
+    # Et quand le dialogue se pop ensuite, il enlèverait la boutique
+    # au lieu de lui-même.
+    #
+    # En faisant pop d'abord :
+    #   pile = [exploration]  (après le pop)
+    #   pile = [exploration, boutique]  (après le callback push)
+    # C'est le bon comportement.
+
+    MÉTHODE _terminer_dialogue(self):
+        SI self.termine:
+            RETOURNER    # sécurité contre double exécution
+
+        self.termine ← True
+
+        # 1. Se pop de la pile
+        self.game_manager.state_manager.pop()
+
+        # 2. Exécuter le callback si présent
+        SI self.callback EST NOT None:
+            ESSAYER:
+                self.callback(
+                    self.game_manager.player,
+                    self.game_manager
+                )
+            EN CAS D'ERREUR comme e:
+                afficher erreur ("Erreur callback dialogue : " + str(e))
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : update
+    # -----------------------------------------------------------------
+    #
+    # Met à jour le typewriter de la dialogue_box.
+
+    MÉTHODE update(self, dt):
+        SI NOT self.termine:
+            self.dialogue_box.update(dt)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : render
+    # -----------------------------------------------------------------
+    #
+    # Dessine la dialogue_box par-dessus l'écran.
+    #
+    # NOTE : l'état en dessous (exploration) est rendu par le
+    # state_manager AVANT cet état, grâce à transparent = True.
+    # Donc ici on ne dessine que la boîte de dialogue, pas le fond.
+
+    MÉTHODE render(self, screen):
+        # L'exploration a déjà été rendue par le state_manager.
+        # On dessine juste la dialogue_box par-dessus.
+
+        self.dialogue_box.draw(screen)
