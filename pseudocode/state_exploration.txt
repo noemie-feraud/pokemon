@@ -1,0 +1,548 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+
+importer pygame
+importer random
+importer State depuis states.state
+importer HUD depuis ui.hud
+importer Camera depuis core.camera
+importer (SCREEN_WIDTH, SCREEN_HEIGHT, TILE_SIZE,
+         TAUX_RENCONTRE, ZONES_NIVEAUX) depuis config.settings
+
+
+# =============================================================================
+# CLASSE STATE EXPLORATION
+# =============================================================================
+#
+# État principal du jeu. Le joueur explore la map, interagit avec
+# les PNJ, déclenche des combats sauvages et des combats de dresseurs.
+
+CLASSE StateExploration (hérite de State):
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+
+    MÉTHODE __init__(self, game_manager):
+        super().__init__(game_manager)
+
+        # --- COMPOSANTS ---
+        self.camera ← Camera(SCREEN_WIDTH, SCREEN_HEIGHT)
+        self.hud ← HUD(game_manager)
+
+        # --- NPCs DE LA ZONE ---
+        self.npcs ← []
+
+        # --- FLAGS ---
+        self.combat_en_attente ← False
+        self.transition_en_attente ← False
+
+        # --- CHARGEMENT INITIAL ---
+        self._charger_zone_actuelle()
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _charger_zone_actuelle
+    # -----------------------------------------------------------------
+    #
+    # Charge la map et les NPCs de la zone actuelle du joueur.
+    # Appelée au constructeur et lors des transitions de zone.
+
+    MÉTHODE _charger_zone_actuelle(self):
+        player ← self.game_manager.player
+        map_manager ← self.game_manager.map_manager
+
+        # Charger la map
+        map_manager.load_map(player.zone_actuelle)
+
+        # Charger les NPCs de cette zone
+        self.npcs ← self._creer_npcs_zone(player.zone_actuelle)
+
+        # Mettre à jour les limites de la caméra
+        self.camera.set_bounds(
+            map_manager.get_map_width(),
+            map_manager.get_map_height()
+        )
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _creer_npcs_zone
+    # -----------------------------------------------------------------
+    #
+    # Crée les instances de NPCs pour la zone donnée.
+    # Lit les données des NPCs depuis les données de la map.
+    #
+    # zone : le nom de la zone ("campus", "alentours", "arena")
+    #
+    # Retourne une liste d'instances NPC (NpcNurse, NpcShopkeeper,
+    # NpcProfessor, NpcQuest, NpcAmbient, Trainer...) selon le type
+    # défini dans les données.
+    #
+    # Les données des NPCs viennent soit de la map Tiled (objets
+    # dans une couche "npcs") soit d'un fichier JSON séparé.
+    # C'est le map_manager qui fournit ces données.
+
+    MÉTHODE _creer_npcs_zone(self, zone):
+        importer NpcNurse depuis entities.npc_nurse
+        importer NpcShopkeeper depuis entities.npc_shopkeeper
+        importer NpcProfessor depuis entities.npc_professor
+        importer NpcQuest depuis entities.npc_quest
+        importer NpcAmbient depuis entities.npc_ambient
+        importer Trainer depuis entities.trainer
+
+        map_manager ← self.game_manager.map_manager
+        npcs_data ← map_manager.get_npcs_data()
+        npcs ← []
+
+        POUR CHAQUE data DANS npcs_data:
+            type_npc ← data["type"]
+
+            SI type_npc == "nurse":
+                npc ← NpcNurse(data)
+            SINON SI type_npc == "shopkeeper":
+                npc ← NpcShopkeeper(data)
+            SINON SI type_npc == "professor":
+                npc ← NpcProfessor(data)
+            SINON SI type_npc == "quest":
+                npc ← NpcQuest(data)
+            SINON SI type_npc == "trainer":
+                npc ← Trainer(data)
+            SINON:
+                npc ← NpcAmbient(data)
+
+            npcs.ajouter(npc)
+
+        RETOURNER npcs
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : on_enter
+    # -----------------------------------------------------------------
+    #
+    # Appelée quand l'exploration redevient l'état actif.
+    # Soit au premier lancement, soit quand un état pushé se termine
+    # (retour de combat, de dialogue, de boutique, etc.)
+
+    MÉTHODE on_enter(self):
+        # Relancer la musique de la zone si nécessaire
+        zone ← self.game_manager.player.zone_actuelle
+        self.game_manager.audio_manager.play_music(zone)
+
+        # Réinitialiser les flags
+        self.combat_en_attente ← False
+        self.transition_en_attente ← False
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : handle_events
+    # -----------------------------------------------------------------
+    #
+    # Gère les événements ponctuels (appui de touche).
+    # Les touches maintenues sont gérées dans update().
+
+    MÉTHODE handle_events(self, events):
+        player ← self.game_manager.player
+
+        # Ne pas traiter les inputs si le joueur est en mouvement
+        SI player.en_mouvement:
+            RETOURNER
+
+        POUR CHAQUE event DANS events:
+            SI event.type != pygame.KEYDOWN:
+                CONTINUER
+
+            # --- INTERACTION (Espace) ---
+            SI event.key == pygame.K_SPACE:
+                self._tenter_interaction()
+
+            # --- MENU PAUSE (Échap) ---
+            SI event.key == pygame.K_ESCAPE:
+                importer StateMenuPause depuis states.state_menu_pause
+                pause ← StateMenuPause(self.game_manager)
+                self.game_manager.state_manager.push(pause)
+
+            # --- INVENTAIRE (I) ---
+            SI event.key == pygame.K_i:
+                importer StateInventory depuis states.state_inventory
+                inv ← StateInventory(self.game_manager)
+                self.game_manager.state_manager.push(inv)
+
+            # --- ÉQUIPE (P) ---
+            SI event.key == pygame.K_p:
+                importer StateTeamScreen depuis states.state_team_screen
+                team ← StateTeamScreen(self.game_manager)
+                self.game_manager.state_manager.push(team)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : update
+    # -----------------------------------------------------------------
+    #
+    # Mise à jour de la logique à chaque frame.
+    #
+    # dt : delta time en secondes
+
+    MÉTHODE update(self, dt):
+        player ← self.game_manager.player
+
+        # --- MOUVEMENT CONTINU ---
+        SI player.en_mouvement:
+            # Le joueur est en train de glisser vers le tile cible
+            player.update_mouvement(dt)
+
+            # Vérifier si le mouvement vient de se terminer
+            SI NOT player.en_mouvement:
+                self._on_arrive_sur_tile()
+
+        SINON:
+            # Le joueur est immobile → vérifier si une touche directionnelle est maintenue
+            self._verifier_input_direction()
+
+        # --- MISE À JOUR DES SYSTÈMES ---
+        self.game_manager.day_night_cycle.update(dt)
+        self.hud.update(dt)
+        self.camera.update(player.get_pixel_position())
+
+        # --- MISE À JOUR DES NPCs (animation) ---
+        POUR CHAQUE npc DANS self.npcs:
+            npc.update(dt)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _verifier_input_direction
+    # -----------------------------------------------------------------
+    #
+    # Vérifie si le joueur maintient une touche directionnelle.
+    # Si oui, tente de le déplacer dans cette direction.
+    #
+    # On utilise pygame.key.get_pressed() pour les touches maintenues
+    # (pas les événements KEYDOWN qui sont ponctuels).
+    # On donne la priorité dans l'ordre : haut, bas, gauche, droite.
+
+    MÉTHODE _verifier_input_direction(self):
+        keys ← pygame.key.get_pressed()
+        player ← self.game_manager.player
+        map_manager ← self.game_manager.map_manager
+
+        direction ← None
+        delta_x ← 0
+        delta_y ← 0
+
+        SI keys[pygame.K_UP]:
+            direction ← "haut"
+            delta_y ← -TILE_SIZE
+        SINON SI keys[pygame.K_DOWN]:
+            direction ← "bas"
+            delta_y ← TILE_SIZE
+        SINON SI keys[pygame.K_LEFT]:
+            direction ← "gauche"
+            delta_x ← -TILE_SIZE
+        SINON SI keys[pygame.K_RIGHT]:
+            direction ← "droite"
+            delta_x ← TILE_SIZE
+
+        SI direction EST None:
+            RETOURNER
+
+        # Toujours mettre à jour la direction du sprite (même si on bouge pas)
+        player.set_direction(direction)
+
+        # Calculer le tile de destination
+        tile_dest_x ← player.tile_x + (delta_x / TILE_SIZE)
+        tile_dest_y ← player.tile_y + (delta_y / TILE_SIZE)
+
+        # Vérifier la collision
+        SI NOT map_manager.is_collision(tile_dest_x, tile_dest_y):
+            # Vérifier qu'aucun NPC n'est sur ce tile
+            SI NOT self._npc_sur_tile(tile_dest_x, tile_dest_y):
+                player.start_mouvement(direction)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _npc_sur_tile
+    # -----------------------------------------------------------------
+    #
+    # Vérifie si un NPC occupe le tile donné.
+    # Empêche le joueur de marcher sur les NPCs.
+
+    MÉTHODE _npc_sur_tile(self, tile_x, tile_y):
+        POUR CHAQUE npc DANS self.npcs:
+            SI npc.tile_x == tile_x ET npc.tile_y == tile_y:
+                RETOURNER True
+        RETOURNER False
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _on_arrive_sur_tile
+    # -----------------------------------------------------------------
+    #
+    # Appelée quand le joueur vient d'arriver sur un nouveau tile.
+    # C'est ici qu'on vérifie les événements liés au tile :
+    # rencontre sauvage, transition de zone, vision des dresseurs.
+    #
+    # L'ordre est important :
+    #   1. Transition (prioritaire, on change de zone)
+    #   2. Dresseur (le joueur est repéré)
+    #   3. Herbe (rencontre sauvage)
+    # Si une transition est détectée, on ne vérifie pas le reste.
+
+    MÉTHODE _on_arrive_sur_tile(self):
+        player ← self.game_manager.player
+        map_manager ← self.game_manager.map_manager
+
+        # 1. TRANSITION DE ZONE
+        transition ← map_manager.get_transition(player.tile_x, player.tile_y)
+        SI transition EST NOT None:
+            self._executer_transition(transition)
+            RETOURNER
+
+        # 2. DRESSEUR
+        SI self._verifier_dresseurs():
+            RETOURNER
+
+        # 3. HERBE
+        SI map_manager.is_grass(player.tile_x, player.tile_y):
+            self._verifier_rencontre_sauvage()
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _executer_transition
+    # -----------------------------------------------------------------
+    #
+    # Téléporte le joueur vers une nouvelle zone.
+    #
+    # transition : dict avec "destination_map", "destination_x",
+    #              "destination_y"
+
+    MÉTHODE _executer_transition(self, transition):
+        player ← self.game_manager.player
+
+        # Mettre à jour la zone du joueur
+        player.zone_actuelle ← transition["destination_map"]
+        player.set_tile_position(
+            transition["destination_x"],
+            transition["destination_y"]
+        )
+
+        # Recharger la zone
+        self._charger_zone_actuelle()
+
+        # Afficher le nom de la zone
+        self.hud.show_zone_name(player.zone_actuelle)
+
+        # Changer la musique
+        self.game_manager.audio_manager.play_music(player.zone_actuelle)
+
+        # Sauvegarde automatique
+        ESSAYER:
+            importer SaveManager depuis core.save_manager
+            SI self.game_manager.save_slot_actuel EST NOT None:
+                save_manager ← SaveManager()
+                save_manager.auto_save(
+                    self.game_manager,
+                    self.game_manager.save_slot_actuel
+                )
+        EN CAS D'ERREUR:
+            passer    # la sauvegarde auto est pas critique
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _verifier_rencontre_sauvage
+    # -----------------------------------------------------------------
+    #
+    # Tire au sort une rencontre sauvage (15% de chance).
+    # Si oui, génère un Pokémon sauvage et lance le combat.
+
+    MÉTHODE _verifier_rencontre_sauvage(self):
+        SI random.random() >= TAUX_RENCONTRE:
+            RETOURNER    # pas de rencontre
+
+        player ← self.game_manager.player
+
+        # Vérifier que le joueur a au moins un Pokémon vivant
+        SI NOT player.team.a_pokemon_valide():
+            RETOURNER
+
+        # Générer le Pokémon sauvage
+        pokemon_sauvage ← self._generer_pokemon_sauvage(player.zone_actuelle)
+
+        # Lancer le combat
+        importer StateCombat depuis states.state_combat
+        combat ← StateCombat(
+            self.game_manager,
+            pokemon_adverse=pokemon_sauvage,
+            type_combat="sauvage"
+        )
+        self.game_manager.state_manager.push(combat)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _generer_pokemon_sauvage
+    # -----------------------------------------------------------------
+    #
+    # Génère un Pokémon sauvage adapté à la zone.
+    #
+    # zone : le nom de la zone
+    #
+    # Étapes :
+    #   1. Déterminer la plage de niveaux (ZONES_NIVEAUX[zone])
+    #   2. Tirer un niveau aléatoire dans la plage
+    #   3. Tirer un Pokémon aléatoire depuis pokemon.json
+    #   4. Créer le Pokémon au niveau tiré
+    #   5. Faire évoluer si le niveau le permet
+    #
+    # Retourne un objet Pokemon.
+
+    MÉTHODE _generer_pokemon_sauvage(self, zone):
+        importer Pokemon depuis entities.pokemon
+
+        # Plage de niveaux pour la zone
+        niveau_min, niveau_max ← ZONES_NIVEAUX[zone]
+        niveau ← random.randint(niveau_min, niveau_max)
+
+        # Choisir un Pokémon de base (stade 1) aléatoire
+        # pokemon.json contient les 54 Pokémon, on filtre les stade 1
+        pokemons_base ← self.game_manager.pokemon_data.get_stade1_ids()
+        pokemon_id ← random.choice(pokemons_base)
+
+        # Créer le Pokémon
+        pokemon ← Pokemon.from_data(pokemon_id, niveau)
+
+        # Évoluer si le niveau est suffisant
+        # (géré dans le constructeur de Pokemon : si niveau >= seuil,
+        #  le Pokémon est créé directement au bon stade)
+
+        RETOURNER pokemon
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _verifier_dresseurs
+    # -----------------------------------------------------------------
+    #
+    # Vérifie si un dresseur non battu voit le joueur.
+    # Si oui, lance le combat.
+    #
+    # Retourne True si un combat a été déclenché, False sinon.
+
+    MÉTHODE _verifier_dresseurs(self):
+        player ← self.game_manager.player
+
+        POUR CHAQUE npc DANS self.npcs:
+            # Vérifier que c'est un Trainer
+            SI NOT isinstance(npc, Trainer):
+                CONTINUER
+
+            # Vérifier qu'il n'est pas déjà battu
+            SI npc.est_battu(player):
+                CONTINUER
+
+            # Vérifier la vision
+            SI npc.peut_voir_joueur(player.get_tile_position()):
+                self._lancer_combat_dresseur(npc)
+                RETOURNER True
+
+        RETOURNER False
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _lancer_combat_dresseur
+    # -----------------------------------------------------------------
+    #
+    # Lance un combat contre un dresseur.
+    #
+    # trainer : l'instance Trainer
+
+    MÉTHODE _lancer_combat_dresseur(self, trainer):
+        importer StateCombat depuis states.state_combat
+
+        combat ← StateCombat(
+            self.game_manager,
+            pokemon_adverse=trainer.get_premier_pokemon(),
+            type_combat="dresseur",
+            trainer=trainer
+        )
+        self.game_manager.state_manager.push(combat)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _tenter_interaction
+    # -----------------------------------------------------------------
+    #
+    # Vérifie si un NPC est devant le joueur et lance l'interaction.
+
+    MÉTHODE _tenter_interaction(self):
+        player ← self.game_manager.player
+
+        # Calculer le tile devant le joueur
+        tile_devant_x, tile_devant_y ← player.get_tile_devant()
+
+        # Chercher un NPC sur ce tile
+        npc_trouve ← None
+        POUR CHAQUE npc DANS self.npcs:
+            SI npc.tile_x == tile_devant_x ET npc.tile_y == tile_devant_y:
+                npc_trouve ← npc
+                SORTIR DE LA BOUCLE
+
+        SI npc_trouve EST None:
+            RETOURNER
+
+        # Faire tourner le NPC vers le joueur
+        npc_trouve.faire_face_a(player.get_tile_position())
+
+        # Obtenir les lignes de dialogue
+        dialogue_data ← npc_trouve.interact(player, self.game_manager)
+
+        # Lancer le dialogue
+        importer StateDialogue depuis states.state_dialogue
+        dialogue ← StateDialogue(
+            self.game_manager,
+            lignes=dialogue_data["lignes"],
+            npc=npc_trouve,
+            callback=dialogue_data.get("callback", None)
+        )
+        self.game_manager.state_manager.push(dialogue)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : render
+    # -----------------------------------------------------------------
+    #
+    # Dessine l'écran d'exploration.
+    #
+    # L'ORDRE EST CRUCIAL :
+    #   1. Map couches basses (sol, décoration)
+    #   2. NPCs (triés par Y pour la profondeur)
+    #   3. Joueur
+    #   4. Map couches hautes (toits, ponts)
+    #   5. Filtre jour/nuit
+    #   6. HUD
+
+    MÉTHODE render(self, screen):
+        player ← self.game_manager.player
+        map_manager ← self.game_manager.map_manager
+        offset ← self.camera.get_offset()
+
+        # 1. MAP COUCHES BASSES
+        map_manager.draw_bottom(screen, offset)
+
+        # 2. ENTITÉS (NPCs + Joueur) triées par Y
+        entites ← self.npcs.copier()
+        entites.ajouter(player)
+        entites.trier(key=LAMBDA e: e.get_pixel_y())
+
+        POUR CHAQUE entite DANS entites:
+            pos_ecran ← (
+                entite.get_pixel_x() - offset[0],
+                entite.get_pixel_y() - offset[1]
+            )
+            screen.blit(entite.get_sprite(), pos_ecran)
+
+        # 4. MAP COUCHES HAUTES
+        map_manager.draw_top(screen, offset)
+
+        # 5. FILTRE JOUR/NUIT
+        self.game_manager.day_night_cycle.draw_filter(screen)
+
+        # 6. HUD
+        self.hud.draw(screen)
