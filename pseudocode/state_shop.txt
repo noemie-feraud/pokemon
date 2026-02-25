@@ -1,0 +1,431 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+
+importer pygame
+importer State depuis states.state
+importer Shop depuis economy.shop
+importer (SCREEN_WIDTH, SCREEN_HEIGHT) depuis config.settings
+
+
+# =============================================================================
+# CONSTANTES LOCALES
+# =============================================================================
+
+DUREE_MESSAGE ← 1.5           # secondes d'affichage du message temporaire
+ITEMS_PAR_PAGE ← 6            # nombre d'objets visibles à l'écran
+COULEURS_CATEGORIE ← {
+    "heal": (100, 255, 100),       # vert
+    "pokeball": (255, 100, 100),   # rouge
+    "boost": (100, 100, 255),      # bleu
+    "revive": (255, 255, 100),     # jaune
+    "status": (200, 100, 255)      # violet
+}
+
+
+# =============================================================================
+# CLASSE STATE SHOP
+# =============================================================================
+#
+# Écran de la boutique. Affiche les objets achetables, gère les achats.
+# Pushé par le callback du NpcShopkeeper, se pop sur Échap.
+
+CLASSE StateShop (hérite de State):
+
+    transparent ← False
+
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+
+    MÉTHODE __init__(self, game_manager):
+        super().__init__(game_manager)
+
+        # --- POLICES ---
+        self.font_titre ← pygame.font.Font(None, 36)
+        self.font_item ← pygame.font.Font(None, 26)
+        self.font_info ← pygame.font.Font(None, 22)
+        self.font_message ← pygame.font.Font(None, 28)
+
+        # --- SHOP (logique d'achat) ---
+        self.shop ← Shop(
+            item_catalog=game_manager.item_catalog,
+            player=game_manager.player
+        )
+
+        # --- CATALOGUE ---
+        # Liste des objets achetables, triés par catégorie puis par prix
+        self.catalogue ← self.shop.get_catalogue()
+        self._trier_catalogue()
+
+        # --- CURSEUR ---
+        self.selection_index ← 0
+        self.scroll_offset ← 0    # pour le défilement si plus de ITEMS_PAR_PAGE
+
+        # --- MESSAGE TEMPORAIRE ---
+        self.message_temporaire ← None
+        self.message_timer ← 0
+        self.message_couleur ← (255, 255, 255)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _trier_catalogue
+    # -----------------------------------------------------------------
+    #
+    # Trie les objets par catégorie (heal, pokeball, boost, revive, status)
+    # puis par prix croissant dans chaque catégorie.
+    # Ça donne une liste logique au joueur.
+
+    MÉTHODE _trier_catalogue(self):
+        ordre_categories ← ["heal", "pokeball", "boost", "revive", "status"]
+
+        self.catalogue.trier(
+            key=LAMBDA item: (
+                ordre_categories.index(item.categorie) SI item.categorie DANS ordre_categories SINON 99,
+                item.prix
+            )
+        )
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : on_enter
+    # -----------------------------------------------------------------
+
+    MÉTHODE on_enter(self):
+        self.game_manager.audio_manager.play_music("shop")
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : handle_events
+    # -----------------------------------------------------------------
+
+    MÉTHODE handle_events(self, events):
+        POUR CHAQUE event DANS events:
+            SI event.type != pygame.KEYDOWN:
+                CONTINUER
+
+            # --- QUITTER (Échap) ---
+            SI event.key == pygame.K_ESCAPE:
+                self.game_manager.state_manager.pop()
+                RETOURNER
+
+            # --- NAVIGATION ---
+            SI event.key == pygame.K_UP:
+                self._naviguer(-1)
+
+            SINON SI event.key == pygame.K_DOWN:
+                self._naviguer(1)
+
+            # --- ACHETER (Espace / Entrée) ---
+            SINON SI event.key EST dans [pygame.K_SPACE, pygame.K_RETURN]:
+                self._tenter_achat()
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _naviguer
+    # -----------------------------------------------------------------
+    #
+    # Déplace le curseur dans la liste.
+    # Gère le défilement (scroll) si la liste est plus longue que
+    # ITEMS_PAR_PAGE.
+    #
+    # direction : -1 (haut) ou +1 (bas)
+
+    MÉTHODE _naviguer(self, direction):
+        SI len(self.catalogue) == 0:
+            RETOURNER
+
+        ancien_index ← self.selection_index
+        self.selection_index ← self.selection_index + direction
+
+        # Clamper
+        SI self.selection_index < 0:
+            self.selection_index ← 0
+        SI self.selection_index >= len(self.catalogue):
+            self.selection_index ← len(self.catalogue) - 1
+
+        # Son de navigation
+        SI self.selection_index != ancien_index:
+            self.game_manager.audio_manager.play_sfx("menu_select")
+
+        # Ajuster le scroll
+        SI self.selection_index < self.scroll_offset:
+            self.scroll_offset ← self.selection_index
+        SI self.selection_index >= self.scroll_offset + ITEMS_PAR_PAGE:
+            self.scroll_offset ← self.selection_index - ITEMS_PAR_PAGE + 1
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _tenter_achat
+    # -----------------------------------------------------------------
+    #
+    # Tente d'acheter l'objet sélectionné.
+
+    MÉTHODE _tenter_achat(self):
+        SI len(self.catalogue) == 0:
+            RETOURNER
+
+        # Ignorer si un message est déjà affiché
+        SI self.message_temporaire EST NOT None:
+            RETOURNER
+
+        item ← self.catalogue[self.selection_index]
+
+        # Tenter l'achat via la logique du shop
+        resultat ← self.shop.acheter(item.id)
+
+        SI resultat["succes"]:
+            self.message_temporaire ← "{} acheté !".format(item.nom)
+            self.message_couleur ← (100, 255, 100)    # vert
+            self.message_timer ← DUREE_MESSAGE
+            self.game_manager.audio_manager.play_sfx("achat")
+
+        SINON:
+            SI resultat["raison"] == "credits_insuffisants":
+                self.message_temporaire ← "Pas assez de crédits !"
+            SINON:
+                self.message_temporaire ← resultat.get("raison", "Achat impossible")
+
+            self.message_couleur ← (255, 100, 100)    # rouge
+            self.message_timer ← DUREE_MESSAGE
+            self.game_manager.audio_manager.play_sfx("erreur")
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : update
+    # -----------------------------------------------------------------
+
+    MÉTHODE update(self, dt):
+        # Timer du message temporaire
+        SI self.message_temporaire EST NOT None:
+            self.message_timer ← self.message_timer - dt
+            SI self.message_timer <= 0:
+                self.message_temporaire ← None
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : render
+    # -----------------------------------------------------------------
+
+    MÉTHODE render(self, screen):
+        # --- FOND ---
+        screen.fill((30, 30, 50))
+
+        # --- TITRE ---
+        self._draw_titre(screen)
+
+        # --- LISTE DES OBJETS ---
+        self._draw_liste(screen)
+
+        # --- PANNEAU D'INFO ---
+        self._draw_info(screen)
+
+        # --- CRÉDITS DU JOUEUR ---
+        self._draw_credits(screen)
+
+        # --- MESSAGE TEMPORAIRE ---
+        SI self.message_temporaire EST NOT None:
+            self._draw_message(screen)
+
+        # --- INDICATION CONTRÔLES ---
+        self._draw_controles(screen)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _draw_titre
+    # -----------------------------------------------------------------
+
+    MÉTHODE _draw_titre(self, screen):
+        surface ← self.font_titre.render("Boutique", True, (255, 255, 255))
+        pos_x ← (SCREEN_WIDTH - surface.get_width()) / 2
+        screen.blit(surface, (pos_x, 20))
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _draw_liste
+    # -----------------------------------------------------------------
+    #
+    # Dessine la liste des objets avec le curseur.
+    # Affiche ITEMS_PAR_PAGE objets à la fois, avec défilement.
+    #
+    # Layout pour chaque ligne :
+    #   [>] [tag catégorie] Nom de l'objet ............. 50cr  (x3)
+    #                                                    prix  quantité
+
+    MÉTHODE _draw_liste(self, screen):
+        zone_x ← 50
+        zone_y ← 70
+        hauteur_ligne ← 45
+        player ← self.game_manager.player
+
+        # Déterminer les objets visibles
+        debut ← self.scroll_offset
+        fin ← min(debut + ITEMS_PAR_PAGE, len(self.catalogue))
+
+        POUR i DE debut À fin - 1:
+            item ← self.catalogue[i]
+            y ← zone_y + (i - debut) × hauteur_ligne
+
+            # --- FOND DE LIGNE (surbrillance si sélectionné) ---
+            SI i == self.selection_index:
+                fond_rect ← pygame.Rect(zone_x - 10, y - 5,
+                                         SCREEN_WIDTH - 80, hauteur_ligne)
+                pygame.draw.rect(screen, (60, 60, 90), fond_rect)
+
+            # --- CURSEUR ---
+            SI i == self.selection_index:
+                prefixe ← "> "
+            SINON:
+                prefixe ← "  "
+
+            # --- TAG CATÉGORIE ---
+            couleur_cat ← COULEURS_CATEGORIE.get(item.categorie, (200, 200, 200))
+            tag ← "[{}]".format(item.categorie[:4].upper())
+            surface_tag ← self.font_info.render(tag, True, couleur_cat)
+            screen.blit(surface_tag, (zone_x + 20, y + 2))
+
+            # --- NOM ---
+            surface_nom ← self.font_item.render(
+                prefixe + item.nom, True, (255, 255, 255))
+            screen.blit(surface_nom, (zone_x + 80, y))
+
+            # --- PRIX ---
+            # Griser le prix si le joueur n'a pas les moyens
+            SI player.credits >= item.prix:
+                couleur_prix ← (255, 255, 255)
+            SINON:
+                couleur_prix ← (150, 80, 80)
+
+            texte_prix ← "{} cr".format(item.prix)
+            surface_prix ← self.font_item.render(texte_prix, True, couleur_prix)
+            pos_prix_x ← SCREEN_WIDTH - 200
+            screen.blit(surface_prix, (pos_prix_x, y))
+
+            # --- QUANTITÉ POSSÉDÉE ---
+            quantite ← player.inventory.get_quantite(item.id)
+            texte_qte ← "x{}".format(quantite)
+            surface_qte ← self.font_info.render(texte_qte, True, (180, 180, 180))
+            screen.blit(surface_qte, (SCREEN_WIDTH - 100, y + 2))
+
+        # --- INDICATEURS DE SCROLL ---
+        SI debut > 0:
+            surface_up ← self.font_info.render("▲ ...", True, (150, 150, 150))
+            screen.blit(surface_up, (zone_x, zone_y - 20))
+
+        SI fin < len(self.catalogue):
+            surface_down ← self.font_info.render("▼ ...", True, (150, 150, 150))
+            y_bas ← zone_y + ITEMS_PAR_PAGE × hauteur_ligne
+            screen.blit(surface_down, (zone_x, y_bas))
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _draw_info
+    # -----------------------------------------------------------------
+    #
+    # Dessine le panneau d'information de l'objet sélectionné.
+    # Affiché en bas de la liste, dans un cadre séparé.
+    # Montre la description et l'effet de l'objet.
+
+    MÉTHODE _draw_info(self, screen):
+        SI len(self.catalogue) == 0:
+            RETOURNER
+
+        item ← self.catalogue[self.selection_index]
+
+        # Cadre d'info
+        info_y ← 380
+        info_rect ← pygame.Rect(50, info_y, SCREEN_WIDTH - 100, 120)
+        pygame.draw.rect(screen, (40, 40, 65), info_rect)
+        pygame.draw.rect(screen, (100, 100, 140), info_rect, 2)
+
+        # Nom en gros
+        surface_nom ← self.font_item.render(item.nom, True, (255, 255, 255))
+        screen.blit(surface_nom, (70, info_y + 10))
+
+        # Description / effet
+        description ← self._get_description_item(item)
+        surface_desc ← self.font_info.render(description, True, (200, 200, 200))
+        screen.blit(surface_desc, (70, info_y + 40))
+
+        # Utilisable en combat / hors combat
+        contexte ← []
+        SI item.usable_in_combat:
+            contexte.ajouter("Combat")
+        SI item.usable_outside_combat:
+            contexte.ajouter("Hors combat")
+        texte_contexte ← "Utilisable : " + ", ".join(contexte)
+        surface_ctx ← self.font_info.render(texte_contexte, True, (150, 150, 180))
+        screen.blit(surface_ctx, (70, info_y + 65))
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _get_description_item
+    # -----------------------------------------------------------------
+    #
+    # Génère une description lisible de l'effet de l'objet.
+
+    MÉTHODE _get_description_item(self, item):
+        SI item.categorie == "heal":
+            RETOURNER "Restaure {} PV".format(item.effect_value)
+        SINON SI item.categorie == "pokeball":
+            RETOURNER "Taux de capture : {}%".format(item.effect_value)
+        SINON SI item.categorie == "boost":
+            RETOURNER "Augmente une stat de {}% (1 combat)".format(item.effect_value)
+        SINON SI item.categorie == "revive":
+            RETOURNER "Réanime un Pokémon KO avec {} PV".format(item.effect_value)
+        SINON SI item.categorie == "status":
+            RETOURNER "Soigne les altérations de statut"
+        SINON:
+            RETOURNER "Objet spécial"
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _draw_credits
+    # -----------------------------------------------------------------
+    #
+    # Affiche les crédits du joueur en bas à droite.
+
+    MÉTHODE _draw_credits(self, screen):
+        player ← self.game_manager.player
+        texte ← "Crédits : {}".format(player.credits)
+        surface ← self.font_item.render(texte, True, (255, 220, 50))
+        pos_x ← SCREEN_WIDTH - surface.get_width() - 50
+        screen.blit(surface, (pos_x, 520))
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _draw_message
+    # -----------------------------------------------------------------
+    #
+    # Dessine le message temporaire (achat réussi / échoué).
+    # Centré à l'écran avec un fond semi-transparent.
+
+    MÉTHODE _draw_message(self, screen):
+        surface_texte ← self.font_message.render(
+            self.message_temporaire, True, self.message_couleur)
+
+        # Fond
+        padding ← 20
+        fond_largeur ← surface_texte.get_width() + padding × 2
+        fond_hauteur ← surface_texte.get_height() + padding
+        fond ← pygame.Surface((fond_largeur, fond_hauteur))
+        fond.fill((0, 0, 0))
+        fond.set_alpha(180)
+
+        centre_x ← (SCREEN_WIDTH - fond_largeur) / 2
+        centre_y ← (SCREEN_HEIGHT - fond_hauteur) / 2
+
+        screen.blit(fond, (centre_x, centre_y))
+        screen.blit(surface_texte, (centre_x + padding, centre_y + padding / 2))
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _draw_controles
+    # -----------------------------------------------------------------
+
+    MÉTHODE _draw_controles(self, screen):
+        texte ← "[↑↓] Naviguer  [Entrée] Acheter  [Échap] Quitter"
+        surface ← self.font_info.render(texte, True, (120, 120, 120))
+        pos_x ← (SCREEN_WIDTH - surface.get_width()) / 2
+        screen.blit(surface, (pos_x, SCREEN_HEIGHT - 40))
