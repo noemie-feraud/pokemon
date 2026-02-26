@@ -1,0 +1,139 @@
+# =============================================================================
+# MAIN.PY — Point d'entrée du jeu
+# =============================================================================
+#
+# Lance le jeu Pokémon La Plateforme.
+# Usage : python main.py
+#
+# Ce fichier :
+#   1. Vérifie les dépendances
+#   2. Initialise Pygame
+#   3. Crée la fenêtre
+#   4. Crée et lance le Game
+#   5. Nettoie à la sortie
+
+
+# =============================================================================
+# VÉRIFICATION DES DÉPENDANCES
+# =============================================================================
+#
+# On vérifie que Pygame et Pytmx sont installés AVANT tout le reste.
+# Si un import échoue, on affiche un message clair et on quitte.
+
+ESSAYER:
+    importer pygame
+EN CAS D'ERREUR ImportError:
+    afficher("Erreur : Pygame n'est pas installé.")
+    afficher("Installez-le avec : pip install pygame")
+    sys.exit(1)
+
+ESSAYER:
+    importer pytmx
+EN CAS D'ERREUR ImportError:
+    afficher("Erreur : Pytmx n'est pas installé.")
+    afficher("Installez-le avec : pip install pytmx")
+    sys.exit(1)
+
+importer sys
+importer os
+
+# Imports du projet
+importer Game depuis core.game
+importer (SCREEN_WIDTH, SCREEN_HEIGHT, FPS,
+         TITRE_JEU) depuis config.settings
+
+
+# =============================================================================
+# VÉRIFICATION DES DOSSIERS
+# =============================================================================
+#
+# S'assurer que les dossiers nécessaires existent.
+
+FONCTION verifier_dossiers():
+    # Dossiers critiques (doivent exister pour que le jeu fonctionne)
+    dossiers_critiques ← ["data", "assets"]
+    POUR CHAQUE dossier DANS dossiers_critiques:
+        SI NOT os.path.exists(dossier):
+            afficher("Erreur : le dossier '{}' est manquant.".format(dossier))
+            afficher("Vérifiez que le projet est complet.")
+            sys.exit(1)
+
+    # Dossiers créés automatiquement si absents
+    dossiers_auto ← ["saves"]
+    POUR CHAQUE dossier DANS dossiers_auto:
+        SI NOT os.path.exists(dossier):
+            os.makedirs(dossier)
+
+
+# =============================================================================
+# INITIALISATION DE PYGAME
+# =============================================================================
+#
+# Initialise tous les modules Pygame (vidéo, audio, événements).
+# Crée la fenêtre de jeu avec les dimensions définies dans settings.
+
+FONCTION initialiser_pygame():
+    pygame.init()
+
+    # Créer la fenêtre
+    screen ← pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+
+    # Titre de la fenêtre
+    pygame.display.set_caption(TITRE_JEU)
+
+    # Icône (optionnel)
+    ESSAYER:
+        icone ← pygame.image.load("assets/sprites/ui/icon.png")
+        pygame.display.set_icon(icone)
+    EN CAS D'ERREUR:
+        passer    # pas d'icône, pas grave
+
+    # Clock pour le framerate
+    clock ← pygame.time.Clock()
+
+    RETOURNER screen, clock
+
+
+# =============================================================================
+# BOUCLE PRINCIPALE
+# =============================================================================
+#
+# Crée l'objet Game et lance sa boucle.
+# Quand la boucle se termine (le joueur quitte), on nettoie.
+
+FONCTION main():
+    # Vérifier les dossiers
+    verifier_dossiers()
+
+    # Initialiser Pygame
+    screen, clock ← initialiser_pygame()
+
+    # Créer le Game
+    ESSAYER:
+        game ← Game(screen, clock)
+    EN CAS D'ERREUR comme e:
+        afficher("Erreur lors de l'initialisation du jeu : " + str(e))
+        pygame.quit()
+        sys.exit(1)
+
+    # Lancer la boucle principale
+    ESSAYER:
+        game.run()
+    EN CAS D'ERREUR comme e:
+        afficher("Erreur fatale : " + str(e))
+        # Optionnel : afficher le traceback complet pour le debug
+        importer traceback
+        traceback.print_exc()
+    FINALEMENT:
+        # Nettoyage — toujours exécuté, même après une erreur
+        pygame.quit()
+
+    afficher("Jeu terminé.")
+
+
+# =============================================================================
+# POINT D'ENTRÉE
+# =============================================================================
+
+SI __name__ == "__main__":
+    main()
