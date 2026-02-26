@@ -1,0 +1,596 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+
+importer pygame
+importer State depuis states.state
+importer (SCREEN_WIDTH, SCREEN_HEIGHT) depuis config.settings
+
+
+# =============================================================================
+# CONSTANTES LOCALES
+# =============================================================================
+
+PHASE_BRACKET ← "bracket"
+PHASE_COMBAT ← "combat"
+PHASE_RESULTAT_ROUND ← "resultat_round"
+PHASE_VICTOIRE_FINALE ← "victoire_finale"
+PHASE_DEFAITE ← "defaite"
+
+NOMS_ROUNDS ← ["Quart de finale", "Demi-finale", "Finale"]
+NOMBRE_ROUNDS ← 3
+
+
+# =============================================================================
+# CLASSE STATE TOURNAMENT
+# =============================================================================
+#
+# Gère l'enchaînement des combats du tournoi.
+# Pushé par le NPC du tournoi dans l'Arena.
+# Push des StateCombat pour chaque round.
+
+CLASSE StateTournament (hérite de State):
+
+    transparent ← False
+
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+    #
+    # game_manager : référence vers Game
+    # adversaires : liste de Trainers du tournoi (3 dresseurs)
+    #               passés par le NPC ou chargés depuis les données
+
+    MÉTHODE __init__(self, game_manager, adversaires=None):
+        super().__init__(game_manager)
+
+        # --- POLICES ---
+        self.font_titre ← pygame.font.Font(None, 40)
+        self.font_round ← pygame.font.Font(None, 30)
+        self.font_info ← pygame.font.Font(None, 24)
+        self.font_detail ← pygame.font.Font(None, 20)
+        self.font_message ← pygame.font.Font(None, 34)
+
+        # --- ADVERSAIRES ---
+        SI adversaires EST NOT None:
+            self.adversaires ← adversaires
+        SINON:
+            self.adversaires ← self._charger_adversaires()
+
+        # --- PROGRESSION ---
+        self.round_actuel ← 0          # 0, 1, 2
+        self.resultats ← []            # ["victoire", "victoire", ...]
+        self.phase ← PHASE_BRACKET
+
+        # --- COMBAT EN ATTENTE ---
+        self.combat_lance ← False
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _charger_adversaires
+    # -----------------------------------------------------------------
+    #
+    # Charge les 3 adversaires du tournoi depuis les données du jeu.
+    # Chaque adversaire est un Trainer avec une équipe de Pokémon.
+    #
+    # Les données viennent de trainers.json (filtrés sur is_tournament)
+    # ou d'un fichier tournament.json dédié.
+
+    MÉTHODE _charger_adversaires(self):
+        importer Trainer depuis entities.trainer
+
+        # Charger les données des adversaires du tournoi
+        # Option 1 : depuis game_manager.pokemon_data ou un fichier dédié
+        # Option 2 : générer procéduralement
+
+        adversaires ← []
+
+        # Round 1 : 2 Pokémon, niveaux 20-22
+        adv1_data ← {
+            "id": "tournament_1",
+            "nom": "Challenger Alex",
+            "type": "trainer",
+            "equipe_pokemon_ids": [],    # sera rempli par les données
+            "niveaux": [20, 22],
+            "reward": 0                  # pas de crédits dans le tournoi
+        }
+
+        # Round 2 : 3 Pokémon, niveaux 22-24
+        adv2_data ← {
+            "id": "tournament_2",
+            "nom": "Vétéran Marie",
+            "type": "trainer",
+            "equipe_pokemon_ids": [],
+            "niveaux": [22, 23, 24],
+            "reward": 0
+        }
+
+        # Round 3 : 3 Pokémon, niveaux 24-25 (stade 3)
+        adv3_data ← {
+            "id": "tournament_3",
+            "nom": "Champion Lucas",
+            "type": "trainer",
+            "equipe_pokemon_ids": [],
+            "niveaux": [24, 25, 25],
+            "reward": 0
+        }
+
+        # En vrai, les données seraient chargées depuis un JSON
+        # avec les IDs de Pokémon spécifiques pour chaque adversaire.
+        # Ici c'est un placeholder.
+
+        POUR CHAQUE data DANS [adv1_data, adv2_data, adv3_data]:
+            trainer ← Trainer(data)
+            adversaires.ajouter(trainer)
+
+        RETOURNER adversaires
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : on_enter
+    # -----------------------------------------------------------------
+    #
+    # Appelée quand le StateTournament (re)devient actif.
+    # Soit au lancement, soit au retour d'un combat.
+
+    MÉTHODE on_enter(self):
+        SI self.phase == PHASE_BRACKET ET self.round_actuel == 0:
+            # Premier lancement → musique du tournoi
+            self.game_manager.audio_manager.play_music("tournament")
+
+        SI self.combat_lance:
+            # On revient d'un combat → vérifier le résultat
+            self.combat_lance ← False
+            self._verifier_resultat_combat()
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _verifier_resultat_combat
+    # -----------------------------------------------------------------
+    #
+    # Après un retour de combat, vérifie si le joueur a gagné ou perdu.
+    # Le résultat est déduit de l'état de l'équipe et du dresseur.
+
+    MÉTHODE _verifier_resultat_combat(self):
+        player ← self.game_manager.player
+        adversaire ← self.adversaires[self.round_actuel]
+
+        # Vérifier si le dresseur est battu
+        # (son ID a été ajouté à trainers_beaten par state_combat)
+        SI adversaire.id DANS player.trainers_beaten:
+            # Victoire
+            self.resultats.ajouter("victoire")
+            self.phase ← PHASE_RESULTAT_ROUND
+        SINON:
+            # Défaite
+            self.resultats.ajouter("defaite")
+            self.phase ← PHASE_DEFAITE
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : handle_events
+    # -----------------------------------------------------------------
+
+    MÉTHODE handle_events(self, events):
+        POUR CHAQUE event DANS events:
+            SI event.type != pygame.KEYDOWN:
+                CONTINUER
+
+            SI self.phase == PHASE_BRACKET:
+                self._handle_bracket(event)
+
+            SINON SI self.phase == PHASE_RESULTAT_ROUND:
+                self._handle_resultat_round(event)
+
+            SINON SI self.phase == PHASE_VICTOIRE_FINALE:
+                self._handle_victoire_finale(event)
+
+            SINON SI self.phase == PHASE_DEFAITE:
+                self._handle_defaite(event)
+
+
+    # -----------------------------------------------------------------
+    # HANDLE BRACKET
+    # -----------------------------------------------------------------
+    #
+    # Affiche le bracket et l'adversaire suivant.
+    # Espace pour lancer le combat.
+
+    MÉTHODE _handle_bracket(self, event):
+        SI event.key EST dans [pygame.K_SPACE, pygame.K_RETURN]:
+            self._lancer_combat_round()
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _lancer_combat_round
+    # -----------------------------------------------------------------
+    #
+    # Lance le combat du round actuel.
+    # Push un StateCombat par-dessus le tournoi.
+
+    MÉTHODE _lancer_combat_round(self):
+        importer StateCombat depuis states.state_combat
+
+        adversaire ← self.adversaires[self.round_actuel]
+
+        combat ← StateCombat(
+            self.game_manager,
+            pokemon_adverse=adversaire.get_premier_pokemon(),
+            type_combat="dresseur",
+            trainer=adversaire
+        )
+
+        self.combat_lance ← True
+        self.game_manager.state_manager.push(combat)
+
+
+    # -----------------------------------------------------------------
+    # HANDLE RÉSULTAT DU ROUND
+    # -----------------------------------------------------------------
+    #
+    # Affiche "Victoire !" et Espace pour continuer.
+
+    MÉTHODE _handle_resultat_round(self, event):
+        SI event.key EST dans [pygame.K_SPACE, pygame.K_RETURN]:
+            # Passer au round suivant
+            self.round_actuel ← self.round_actuel + 1
+
+            SI self.round_actuel >= NOMBRE_ROUNDS:
+                # Tous les rounds gagnés → victoire finale !
+                self.phase ← PHASE_VICTOIRE_FINALE
+                self.game_manager.audio_manager.play_music("victory")
+            SINON:
+                # Round suivant
+                self.phase ← PHASE_BRACKET
+                self.game_manager.audio_manager.play_music("tournament")
+
+
+    # -----------------------------------------------------------------
+    # HANDLE VICTOIRE FINALE
+    # -----------------------------------------------------------------
+    #
+    # Le joueur a gagné le tournoi ! Espace pour aller au GameOver.
+
+    MÉTHODE _handle_victoire_finale(self, event):
+        SI event.key EST dans [pygame.K_SPACE, pygame.K_RETURN]:
+            self._terminer_tournoi_victoire()
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _terminer_tournoi_victoire
+    # -----------------------------------------------------------------
+    #
+    # Le joueur a gagné le tournoi.
+    # Enregistrer dans le leaderboard et passer au GameOver.
+
+    MÉTHODE _terminer_tournoi_victoire(self):
+        player ← self.game_manager.player
+
+        # Enregistrer dans le leaderboard
+        ESSAYER:
+            importer Leaderboard depuis endgame.leaderboard
+            leaderboard ← Leaderboard()
+            leaderboard.enregistrer(
+                nom=player.name,
+                temps_jeu=player.play_time,
+                pokemon_count=len(player.team.pokemons) + len(player.storage.pokemons),
+                pokedex_count=player.pokedex.get_total_vus()
+            )
+        EN CAS D'ERREUR:
+            passer    # le leaderboard est pas critique
+
+        # Passer au GameOver (victoire)
+        importer StateGameOver depuis states.state_game_over
+        game_over ← StateGameOver(self.game_manager, victoire=True)
+        self.game_manager.state_manager.change(game_over)
+
+
+    # -----------------------------------------------------------------
+    # HANDLE DÉFAITE
+    # -----------------------------------------------------------------
+    #
+    # Le joueur a perdu un round. Espace pour quitter le tournoi.
+
+    MÉTHODE _handle_defaite(self, event):
+        SI event.key EST dans [pygame.K_SPACE, pygame.K_RETURN]:
+            self._terminer_tournoi_defaite()
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _terminer_tournoi_defaite
+    # -----------------------------------------------------------------
+    #
+    # Le joueur a perdu. Soigner l'équipe et retourner à l'exploration.
+
+    MÉTHODE _terminer_tournoi_defaite(self):
+        player ← self.game_manager.player
+
+        # Soigner l'équipe
+        player.team.soigner_tous()
+
+        # Retour à l'exploration (pop le tournoi)
+        self.game_manager.state_manager.pop()
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : update
+    # -----------------------------------------------------------------
+
+    MÉTHODE update(self, dt):
+        passer
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : render
+    # -----------------------------------------------------------------
+
+    MÉTHODE render(self, screen):
+        screen.fill((20, 15, 35))
+
+        SI self.phase == PHASE_BRACKET:
+            self._draw_bracket(screen)
+            self._draw_adversaire_actuel(screen)
+
+        SINON SI self.phase == PHASE_RESULTAT_ROUND:
+            self._draw_bracket(screen)
+            self._draw_resultat_round(screen)
+
+        SINON SI self.phase == PHASE_VICTOIRE_FINALE:
+            self._draw_victoire_finale(screen)
+
+        SINON SI self.phase == PHASE_DEFAITE:
+            self._draw_bracket(screen)
+            self._draw_defaite(screen)
+
+
+    # -----------------------------------------------------------------
+    # RENDU : BRACKET
+    # -----------------------------------------------------------------
+    #
+    # Dessine l'arbre du tournoi.
+    # Les rounds gagnés sont remplis, les rounds à venir sont "???".
+
+    MÉTHODE _draw_bracket(self, screen):
+        # Titre
+        surface_titre ← self.font_titre.render("Tournoi de l'Arena", True, (255, 220, 50))
+        titre_x ← (SCREEN_WIDTH - surface_titre.get_width()) / 2
+        screen.blit(surface_titre, (titre_x, 20))
+
+        # Le bracket vertical simplifié :
+        # Chaque round est une ligne avec l'adversaire et le résultat
+
+        bracket_x ← 80
+        bracket_y ← 80
+        hauteur_round ← 80
+
+        POUR i DE 0 À NOMBRE_ROUNDS - 1:
+            y ← bracket_y + i × hauteur_round
+            adversaire ← self.adversaires[i]
+            nom_round ← NOMS_ROUNDS[i]
+
+            # --- CADRE DU ROUND ---
+            cadre_rect ← pygame.Rect(bracket_x, y, SCREEN_WIDTH - 160, 65)
+
+            # Couleur selon l'état
+            SI i < len(self.resultats):
+                # Round terminé
+                SI self.resultats[i] == "victoire":
+                    couleur_fond ← (30, 60, 30)    # vert sombre
+                    couleur_bordure ← (100, 255, 100)
+                SINON:
+                    couleur_fond ← (60, 30, 30)    # rouge sombre
+                    couleur_bordure ← (255, 100, 100)
+            SINON SI i == self.round_actuel:
+                # Round actuel
+                couleur_fond ← (40, 40, 70)
+                couleur_bordure ← (255, 220, 50)
+            SINON:
+                # Round futur
+                couleur_fond ← (30, 30, 45)
+                couleur_bordure ← (70, 70, 90)
+
+            pygame.draw.rect(screen, couleur_fond, cadre_rect)
+            pygame.draw.rect(screen, couleur_bordure, cadre_rect, 2)
+
+            # --- NOM DU ROUND ---
+            surface_round ← self.font_info.render(nom_round, True, (180, 180, 220))
+            screen.blit(surface_round, (bracket_x + 15, y + 8))
+
+            # --- ADVERSAIRE ---
+            SI i < len(self.resultats) OU i == self.round_actuel:
+                # Round passé ou actuel → montrer le nom
+                texte_adv ← "vs {}".format(adversaire.nom)
+                couleur_adv ← (255, 255, 255)
+            SINON:
+                texte_adv ← "vs ???"
+                couleur_adv ← (100, 100, 100)
+
+            surface_adv ← self.font_info.render(texte_adv, True, couleur_adv)
+            screen.blit(surface_adv, (bracket_x + 200, y + 8))
+
+            # --- NOMBRE DE POKÉMON ---
+            SI i < len(self.resultats) OU i == self.round_actuel:
+                nb_pokemon ← len(adversaire.equipe)
+                texte_team ← "{} Pokémon".format(nb_pokemon)
+                surface_team ← self.font_detail.render(texte_team, True, (150, 150, 180))
+                screen.blit(surface_team, (bracket_x + 200, y + 35))
+
+            # --- RÉSULTAT ---
+            SI i < len(self.resultats):
+                SI self.resultats[i] == "victoire":
+                    texte_res ← "✓ Victoire"
+                    couleur_res ← (100, 255, 100)
+                SINON:
+                    texte_res ← "✗ Défaite"
+                    couleur_res ← (255, 100, 100)
+
+                surface_res ← self.font_info.render(texte_res, True, couleur_res)
+                screen.blit(surface_res, (SCREEN_WIDTH - 250, y + 8))
+
+            SINON SI i == self.round_actuel:
+                texte_res ← "→ En cours"
+                surface_res ← self.font_info.render(texte_res, True, (255, 220, 50))
+                screen.blit(surface_res, (SCREEN_WIDTH - 250, y + 8))
+
+
+    # -----------------------------------------------------------------
+    # RENDU : ADVERSAIRE ACTUEL
+    # -----------------------------------------------------------------
+    #
+    # Affiche les détails de l'adversaire du round actuel
+    # et le bouton "Combattre !"
+
+    MÉTHODE _draw_adversaire_actuel(self, screen):
+        SI self.round_actuel >= len(self.adversaires):
+            RETOURNER
+
+        adversaire ← self.adversaires[self.round_actuel]
+
+        # Cadre en bas
+        info_y ← SCREEN_HEIGHT - 220
+        cadre_rect ← pygame.Rect(80, info_y, SCREEN_WIDTH - 160, 170)
+        pygame.draw.rect(screen, (35, 35, 60), cadre_rect)
+        pygame.draw.rect(screen, (255, 220, 50), cadre_rect, 2)
+
+        # Nom du round
+        texte_round ← "{}".format(NOMS_ROUNDS[self.round_actuel])
+        surface_round ← self.font_round.render(texte_round, True, (255, 220, 50))
+        screen.blit(surface_round, (100, info_y + 15))
+
+        # Nom de l'adversaire
+        texte_nom ← "Adversaire : {}".format(adversaire.nom)
+        surface_nom ← self.font_info.render(texte_nom, True, (255, 255, 255))
+        screen.blit(surface_nom, (100, info_y + 50))
+
+        # Équipe adverse (noms des Pokémon)
+        noms_pokemon ← [p.nom POUR p DANS adversaire.equipe]
+        texte_equipe ← "Pokémon : {}".format(", ".join(noms_pokemon))
+        surface_equipe ← self.font_detail.render(texte_equipe, True, (180, 180, 220))
+        screen.blit(surface_equipe, (100, info_y + 80))
+
+        # État de l'équipe du joueur
+        player ← self.game_manager.player
+        nb_valides ← player.team.count_valides()
+        nb_total ← len(player.team.pokemons)
+        texte_joueur ← "Votre équipe : {}/{} Pokémon en état de combattre".format(
+            nb_valides, nb_total)
+        surface_joueur ← self.font_detail.render(texte_joueur, True, (150, 220, 150))
+        screen.blit(surface_joueur, (100, info_y + 105))
+
+        # Bouton combattre
+        texte_btn ← "[Espace] Combattre !"
+        surface_btn ← self.font_round.render(texte_btn, True, (255, 255, 255))
+        btn_x ← (SCREEN_WIDTH - surface_btn.get_width()) / 2
+        screen.blit(surface_btn, (btn_x, info_y + 135))
+
+
+    # -----------------------------------------------------------------
+    # RENDU : RÉSULTAT DU ROUND
+    # -----------------------------------------------------------------
+
+    MÉTHODE _draw_resultat_round(self, screen):
+        # Overlay
+        overlay ← pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+        overlay.fill((0, 0, 0))
+        overlay.set_alpha(120)
+        screen.blit(overlay, (0, 0))
+
+        # Message de victoire
+        round_nom ← NOMS_ROUNDS[self.round_actuel]
+        texte ← "{} remportée !".format(round_nom)
+        surface ← self.font_titre.render(texte, True, (100, 255, 100))
+        x ← (SCREEN_WIDTH - surface.get_width()) / 2
+        y ← SCREEN_HEIGHT / 2 - 30
+        screen.blit(surface, (x, y))
+
+        # Indication round suivant
+        SI self.round_actuel + 1 < NOMBRE_ROUNDS:
+            prochain ← NOMS_ROUNDS[self.round_actuel + 1]
+            texte_next ← "Prochain round : {}".format(prochain)
+        SINON:
+            texte_next ← "Vous avez atteint la finale !"
+
+        surface_next ← self.font_info.render(texte_next, True, (200, 200, 255))
+        nx ← (SCREEN_WIDTH - surface_next.get_width()) / 2
+        screen.blit(surface_next, (nx, y + 50))
+
+        # Continuer
+        surface_cont ← self.font_detail.render("[Espace] Continuer", True, (180, 180, 180))
+        cx ← (SCREEN_WIDTH - surface_cont.get_width()) / 2
+        screen.blit(surface_cont, (cx, y + 90))
+
+
+    # -----------------------------------------------------------------
+    # RENDU : VICTOIRE FINALE
+    # -----------------------------------------------------------------
+
+    MÉTHODE _draw_victoire_finale(self, screen):
+        screen.fill((10, 10, 30))
+
+        # Grand message de victoire
+        texte1 ← "CHAMPION DU TOURNOI !"
+        surface1 ← self.font_titre.render(texte1, True, (255, 220, 50))
+        x1 ← (SCREEN_WIDTH - surface1.get_width()) / 2
+        screen.blit(surface1, (x1, 200))
+
+        player ← self.game_manager.player
+        texte2 ← "{} remporte le Tournoi de La Plateforme !".format(player.name)
+        surface2 ← self.font_round.render(texte2, True, (255, 255, 255))
+        x2 ← (SCREEN_WIDTH - surface2.get_width()) / 2
+        screen.blit(surface2, (x2, 280))
+
+        # Stats de la partie
+        texte_stats ← "Pokédex: {}/54   Temps: {}".format(
+            player.pokedex.get_total_vus(),
+            self._formater_temps(player.play_time)
+        )
+        surface_stats ← self.font_info.render(texte_stats, True, (180, 200, 255))
+        sx ← (SCREEN_WIDTH - surface_stats.get_width()) / 2
+        screen.blit(surface_stats, (sx, 340))
+
+        # Continuer
+        surface_cont ← self.font_info.render("[Espace] Continuer", True, (150, 150, 150))
+        cx ← (SCREEN_WIDTH - surface_cont.get_width()) / 2
+        screen.blit(surface_cont, (cx, 450))
+
+
+    # -----------------------------------------------------------------
+    # RENDU : DÉFAITE
+    # -----------------------------------------------------------------
+
+    MÉTHODE _draw_defaite(self, screen):
+        overlay ← pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+        overlay.fill((0, 0, 0))
+        overlay.set_alpha(150)
+        screen.blit(overlay, (0, 0))
+
+        round_nom ← NOMS_ROUNDS[self.round_actuel]
+        texte ← "Défaite en {}...".format(round_nom)
+        surface ← self.font_titre.render(texte, True, (255, 100, 100))
+        x ← (SCREEN_WIDTH - surface.get_width()) / 2
+        screen.blit(surface, (x, SCREEN_HEIGHT / 2 - 40))
+
+        texte2 ← "Votre équipe sera soignée."
+        surface2 ← self.font_info.render(texte2, True, (200, 200, 200))
+        x2 ← (SCREEN_WIDTH - surface2.get_width()) / 2
+        screen.blit(surface2, (x2, SCREEN_HEIGHT / 2 + 10))
+
+        texte3 ← "Vous pouvez retenter le tournoi (150 crédits)"
+        surface3 ← self.font_detail.render(texte3, True, (180, 180, 220))
+        x3 ← (SCREEN_WIDTH - surface3.get_width()) / 2
+        screen.blit(surface3, (x3, SCREEN_HEIGHT / 2 + 45))
+
+        surface_cont ← self.font_detail.render("[Espace] Quitter le tournoi", True, (150, 150, 150))
+        cx ← (SCREEN_WIDTH - surface_cont.get_width()) / 2
+        screen.blit(surface_cont, (cx, SCREEN_HEIGHT / 2 + 90))
+
+
+    # -----------------------------------------------------------------
+    # UTILITAIRE
+    # -----------------------------------------------------------------
+
+    MÉTHODE _formater_temps(self, secondes):
+        heures ← int(secondes) // 3600
+        minutes ← (int(secondes) % 3600) // 60
+        RETOURNER "{:02d}h{:02d}".format(heures, minutes)
