@@ -1,0 +1,273 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+
+importer json
+importer os
+importer datetime
+
+
+# =============================================================================
+# CONSTANTES
+# =============================================================================
+
+LEADERBOARD_PATH ← "saves/leaderboard.json"
+MAX_ENTRIES ← 10
+
+
+# =============================================================================
+# CLASSE LEADERBOARD
+# =============================================================================
+#
+# Gère le classement des meilleures parties.
+# Lit et écrit un fichier JSON. Classe autonome sans dépendance
+# à Pygame ou au game_manager.
+
+CLASSE Leaderboard:
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+    #
+    # Charge le leaderboard depuis le fichier.
+    # Si le fichier n'existe pas ou est corrompu, on part d'un
+    # leaderboard vide.
+
+    MÉTHODE __init__(self):
+        self.entries ← []
+        self._charger()
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _charger
+    # -----------------------------------------------------------------
+    #
+    # Lit le fichier JSON et charge les entrées.
+
+    MÉTHODE _charger(self):
+        ESSAYER:
+            SI os.path.exists(LEADERBOARD_PATH):
+                AVEC open(LEADERBOARD_PATH, "r", encoding="utf-8") COMME f:
+                    data ← json.load(f)
+                    self.entries ← data.get("entries", [])
+
+                    # Valider les entrées
+                    self.entries ← [e POUR e DANS self.entries SI self._valider_entree(e)]
+
+                    # Trier par sécurité
+                    self._trier()
+            SINON:
+                self.entries ← []
+
+        EN CAS D'ERREUR:
+            # Fichier corrompu ou illisible → repartir de zéro
+            self.entries ← []
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _valider_entree
+    # -----------------------------------------------------------------
+    #
+    # Vérifie qu'une entrée a les champs minimum requis.
+    # Protège contre les fichiers corrompus ou modifiés manuellement.
+    #
+    # entry : dict à valider
+    # Retourne True si l'entrée est valide.
+
+    MÉTHODE _valider_entree(self, entry):
+        SI NOT isinstance(entry, dict):
+            RETOURNER False
+
+        champs_requis ← ["nom", "temps_secondes"]
+        POUR CHAQUE champ DANS champs_requis:
+            SI champ NOT dans entry:
+                RETOURNER False
+
+        # Le temps doit être un nombre positif
+        SI NOT isinstance(entry["temps_secondes"], (int, float)):
+            RETOURNER False
+        SI entry["temps_secondes"] < 0:
+            RETOURNER False
+
+        RETOURNER True
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _trier
+    # -----------------------------------------------------------------
+    #
+    # Trie les entrées par :
+    #   1. Temps croissant (le plus rapide en premier)
+    #   2. Pokédex décroissant (le plus complet en premier, en cas d'égalité)
+    #   3. Date décroissante (le plus récent en premier, en cas d'égalité)
+
+    MÉTHODE _trier(self):
+        self.entries.trier(
+            key=LAMBDA e: (
+                e.get("temps_secondes", 999999),
+                -e.get("pokedex_count", 0),
+                e.get("date", "")    # les dates ISO se trient naturellement
+            )
+        )
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _sauvegarder
+    # -----------------------------------------------------------------
+    #
+    # Écrit le leaderboard dans le fichier JSON.
+
+    MÉTHODE _sauvegarder(self):
+        ESSAYER:
+            # Créer le dossier saves/ s'il n'existe pas
+            dossier ← os.path.dirname(LEADERBOARD_PATH)
+            SI dossier ET NOT os.path.exists(dossier):
+                os.makedirs(dossier)
+
+            data ← {
+                "entries": self.entries
+            }
+
+            AVEC open(LEADERBOARD_PATH, "w", encoding="utf-8") COMME f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+
+        EN CAS D'ERREUR comme e:
+            afficher erreur ("Erreur sauvegarde leaderboard : " + str(e))
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : enregistrer
+    # -----------------------------------------------------------------
+    #
+    # Enregistre une nouvelle entrée dans le leaderboard.
+    #
+    # nom : nom du dresseur
+    # temps_jeu : temps de jeu en secondes
+    # pokemon_count : nombre total de Pokémon possédés
+    # pokedex_count : nombre de Pokémon vus au pokédex
+    #
+    # L'entrée est ajoutée, le classement est retrié, et les entrées
+    # au-delà de MAX_ENTRIES sont supprimées.
+    #
+    # Retourne le rang obtenu (1-based) ou None si l'entrée n'entre
+    # pas dans le top.
+
+    MÉTHODE enregistrer(self, nom, temps_jeu, pokemon_count, pokedex_count):
+        # Formater le temps
+        heures ← int(temps_jeu) // 3600
+        minutes ← (int(temps_jeu) % 3600) // 60
+        temps_formate ← "{:02d}h{:02d}".format(heures, minutes)
+
+        # Créer l'entrée
+        nouvelle_entree ← {
+            "nom": nom,
+            "temps_secondes": int(temps_jeu),
+            "temps_formate": temps_formate,
+            "pokemon_count": pokemon_count,
+            "pokedex_count": pokedex_count,
+            "date": datetime.date.today().isoformat()
+        }
+
+        # Ajouter
+        self.entries.ajouter(nouvelle_entree)
+
+        # Trier
+        self._trier()
+
+        # Limiter à MAX_ENTRIES
+        SI len(self.entries) > MAX_ENTRIES:
+            self.entries ← self.entries[:MAX_ENTRIES]
+
+        # Sauvegarder
+        self._sauvegarder()
+
+        # Calculer le rang
+        rang ← None
+        POUR i, entry DANS enumerate(self.entries):
+            SI entry EST nouvelle_entree:
+                rang ← i + 1
+                SORTIR DE LA BOUCLE
+
+        RETOURNER rang
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_classement
+    # -----------------------------------------------------------------
+    #
+    # Retourne la liste des entrées triées.
+    # Chaque entrée est un dict avec nom, temps_secondes,
+    # temps_formate, pokemon_count, pokedex_count, date.
+    #
+    # limit : nombre max d'entrées à retourner (None = toutes)
+
+    MÉTHODE get_classement(self, limit=None):
+        SI limit EST NOT None:
+            RETOURNER self.entries[:limit]
+        RETOURNER self.entries
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_meilleur_temps
+    # -----------------------------------------------------------------
+    #
+    # Retourne le meilleur temps en secondes, ou None si le
+    # leaderboard est vide.
+
+    MÉTHODE get_meilleur_temps(self):
+        SI len(self.entries) == 0:
+            RETOURNER None
+        RETOURNER self.entries[0].get("temps_secondes", None)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_rang
+    # -----------------------------------------------------------------
+    #
+    # Retourne le rang qu'obtiendrait un temps donné sans l'enregistrer.
+    # Utile pour afficher "Vous seriez Xème !" avant l'inscription.
+    #
+    # temps_secondes : le temps à évaluer
+    # Retourne un int (1-based)
+
+    MÉTHODE get_rang(self, temps_secondes):
+        rang ← 1
+        POUR CHAQUE entry DANS self.entries:
+            SI temps_secondes > entry.get("temps_secondes", 0):
+                rang ← rang + 1
+            SINON:
+                SORTIR DE LA BOUCLE
+        RETOURNER rang
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : est_dans_classement
+    # -----------------------------------------------------------------
+    #
+    # Vérifie si un temps donné entre dans le top MAX_ENTRIES.
+    # Retourne True si le temps est assez bon.
+
+    MÉTHODE est_dans_classement(self, temps_secondes):
+        SI len(self.entries) < MAX_ENTRIES:
+            RETOURNER True    # le classement n'est pas plein
+        RETOURNER temps_secondes < self.entries[-1].get("temps_secondes", 999999)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : effacer
+    # -----------------------------------------------------------------
+    #
+    # Remet le leaderboard à zéro. Utilisé pour le debug ou
+    # si le joueur veut repartir de zéro.
+
+    MÉTHODE effacer(self):
+        self.entries ← []
+        self._sauvegarder()
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_nombre_entries
+    # -----------------------------------------------------------------
+
+    MÉTHODE get_nombre_entries(self):
+        RETOURNER len(self.entries)
