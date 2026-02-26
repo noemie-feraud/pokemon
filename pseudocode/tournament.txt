@@ -1,0 +1,439 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+
+importer random
+importer json
+importer os
+importer Pokemon depuis entities.pokemon
+importer Trainer depuis entities.trainer
+importer (FRAIS_TOURNOI, ZONES_NIVEAUX) depuis config.settings
+
+
+# =============================================================================
+# CONSTANTES
+# =============================================================================
+
+TOURNAMENT_DATA_PATH ← "data/tournament.json"
+
+# Fallback si le fichier n'existe pas
+ROUNDS_DEFAUT ← [
+    {
+        "nom": "Quart de finale",
+        "adversaire_nom": "Challenger Alex",
+        "nb_pokemon": 2,
+        "niveau_min": 20,
+        "niveau_max": 22,
+        "stade_max": 2
+    },
+    {
+        "nom": "Demi-finale",
+        "adversaire_nom": "Vétéran Marie",
+        "nb_pokemon": 3,
+        "niveau_min": 22,
+        "niveau_max": 24,
+        "stade_max": 2
+    },
+    {
+        "nom": "Finale",
+        "adversaire_nom": "Champion Lucas",
+        "nb_pokemon": 3,
+        "niveau_min": 24,
+        "niveau_max": 25,
+        "stade_max": 3
+    }
+]
+
+
+# =============================================================================
+# CLASSE TOURNAMENT
+# =============================================================================
+#
+# Logique du tournoi. Gère le bracket, les adversaires, les conditions
+# d'accès. Utilisé par state_tournament.py.
+
+CLASSE Tournament:
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+    #
+    # pokemon_data : le catalogue des 54 Pokémon (pour générer les équipes)
+
+    MÉTHODE __init__(self, pokemon_data):
+        self.pokemon_data ← pokemon_data
+
+        # --- CHARGER LES DONNÉES ---
+        self.rounds_config ← self._charger_config()
+
+        # --- GÉNÉRER LES ADVERSAIRES ---
+        self.adversaires ← []
+        self._generer_adversaires()
+
+        # --- ÉTAT DU BRACKET ---
+        self.round_actuel ← 0
+        self.resultats ← []        # liste de "victoire" ou "defaite"
+        self.en_cours ← False
+        self.termine ← False
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _charger_config
+    # -----------------------------------------------------------------
+    #
+    # Charge la configuration du tournoi depuis le fichier JSON.
+    # Fallback sur les constantes si le fichier n'existe pas.
+
+    MÉTHODE _charger_config(self):
+        ESSAYER:
+            SI os.path.exists(TOURNAMENT_DATA_PATH):
+                AVEC open(TOURNAMENT_DATA_PATH, "r") COMME f:
+                    data ← json.load(f)
+                    RETOURNER data.get("rounds", ROUNDS_DEFAUT)
+        EN CAS D'ERREUR:
+            passer
+
+        RETOURNER ROUNDS_DEFAUT
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _generer_adversaires
+    # -----------------------------------------------------------------
+    #
+    # Crée les Trainer pour chaque round.
+    # Les Pokémon de chaque adversaire sont générés semi-aléatoirement
+    # selon les contraintes du round.
+
+    MÉTHODE _generer_adversaires(self):
+        self.adversaires ← []
+
+        POUR CHAQUE round_config DANS self.rounds_config:
+            trainer ← self._creer_adversaire(round_config)
+            self.adversaires.ajouter(trainer)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _creer_adversaire
+    # -----------------------------------------------------------------
+    #
+    # Crée un Trainer pour un round donné.
+    #
+    # round_config : dict avec nom, nb_pokemon, niveau_min/max, stade_max
+    #
+    # Logique de génération :
+    #   1. Tirer nb_pokemon IDs de Pokémon distincts
+    #   2. Pour chaque Pokémon, tirer un niveau dans la plage
+    #   3. Créer le Pokémon au bon niveau (il évolue automatiquement
+    #      si le niveau dépasse le seuil d'évolution)
+    #   4. Vérifier que le stade ne dépasse pas stade_max
+    #   5. Garantir la variété des types (pas 3 Pokémon du même type)
+
+    MÉTHODE _creer_adversaire(self, round_config):
+        nom ← round_config.get("adversaire_nom", "Adversaire")
+        nb_pokemon ← round_config.get("nb_pokemon", 2)
+        niveau_min ← round_config.get("niveau_min", 20)
+        niveau_max ← round_config.get("niveau_max", 25)
+        stade_max ← round_config.get("stade_max", 3)
+
+        # Générer l'équipe
+        equipe ← self._generer_equipe(nb_pokemon, niveau_min, niveau_max, stade_max)
+
+        # Créer le Trainer
+        trainer_data ← {
+            "id": "tournament_" + nom.lower().replace(" ", "_"),
+            "nom": nom,
+            "type": "trainer",
+            "position": {"x": 0, "y": 0},    # pas de position sur la map
+            "direction": "bas",
+            "dialogues": [
+                "Prépare-toi à combattre !",
+                "Bien joué..."
+            ],
+            "reward": 0    # pas de crédits dans le tournoi
+        }
+
+        trainer ← Trainer(trainer_data)
+        trainer.equipe ← equipe
+
+        RETOURNER trainer
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _generer_equipe
+    # -----------------------------------------------------------------
+    #
+    # Génère une équipe de Pokémon pour un adversaire.
+    #
+    # Contraintes :
+    #   - nb_pokemon Pokémon distincts (pas de doublons)
+    #   - niveaux dans la plage [niveau_min, niveau_max]
+    #   - stade ≤ stade_max
+    #   - types variés (on essaie de ne pas avoir 2 Pokémon du même type)
+    #
+    # Retourne une liste d'instances Pokemon.
+
+    MÉTHODE _generer_equipe(self, nb_pokemon, niveau_min, niveau_max, stade_max):
+        equipe ← []
+        types_utilises ← set()
+        ids_utilises ← set()
+
+        # Récupérer tous les IDs de Pokémon de base (stade 1)
+        tous_les_ids ← self.pokemon_data.get_stade1_ids()
+
+        # Mélanger pour la variété
+        ids_melanges ← liste(tous_les_ids)
+        random.shuffle(ids_melanges)
+
+        POUR CHAQUE pokemon_id DANS ids_melanges:
+            SI len(equipe) >= nb_pokemon:
+                SORTIR DE LA BOUCLE
+
+            # Récupérer les infos pour vérifier le type
+            info ← self.pokemon_data.get_info(pokemon_id)
+            types_pokemon ← info["types"]
+
+            # Essayer d'éviter les doublons de type
+            # (on relaxe cette contrainte si on ne trouve pas assez de variété)
+            type_deja_utilise ← False
+            POUR CHAQUE t DANS types_pokemon:
+                SI t DANS types_utilises:
+                    type_deja_utilise ← True
+
+            # Si on a déjà utilisé ce type ET qu'on a encore des options, skip
+            SI type_deja_utilise ET len(equipe) < nb_pokemon - 1:
+                CONTINUER
+
+            # Tirer un niveau
+            niveau ← random.randint(niveau_min, niveau_max)
+
+            # Créer le Pokémon
+            pokemon ← Pokemon.from_data(pokemon_id, niveau)
+
+            # Vérifier le stade
+            SI pokemon.stade > stade_max:
+                # Réduire au stade max en ajustant le niveau
+                # (ou simplement skip ce Pokémon)
+                CONTINUER
+
+            # Ajouter à l'équipe
+            equipe.ajouter(pokemon)
+            ids_utilises.ajouter(pokemon_id)
+            POUR CHAQUE t DANS types_pokemon:
+                types_utilises.ajouter(t)
+
+        # Si on n'a pas assez de Pokémon (contrainte de type trop stricte),
+        # remplir avec des Pokémon au hasard
+        SI len(equipe) < nb_pokemon:
+            POUR CHAQUE pokemon_id DANS ids_melanges:
+                SI len(equipe) >= nb_pokemon:
+                    SORTIR DE LA BOUCLE
+                SI pokemon_id DANS ids_utilises:
+                    CONTINUER
+
+                niveau ← random.randint(niveau_min, niveau_max)
+                pokemon ← Pokemon.from_data(pokemon_id, niveau)
+
+                SI pokemon.stade <= stade_max:
+                    equipe.ajouter(pokemon)
+                    ids_utilises.ajouter(pokemon_id)
+
+        RETOURNER equipe
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODES D'ACCÈS (conditions d'inscription)
+    # -----------------------------------------------------------------
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : peut_participer
+    # -----------------------------------------------------------------
+    #
+    # Vérifie si le joueur remplit les conditions pour entrer
+    # dans le tournoi.
+    #
+    # player : l'instance Player
+    #
+    # Retourne un dict :
+    #   {"peut": True/False, "raison": "..."}
+
+    MÉTHODE peut_participer(self, player):
+        # Vérifier les crédits
+        SI player.credits < FRAIS_TOURNOI:
+            RETOURNER {
+                "peut": False,
+                "raison": "Pas assez de crédits ({} nécessaires, vous en avez {})".format(
+                    FRAIS_TOURNOI, player.credits)
+            }
+
+        # Vérifier l'équipe
+        SI NOT player.team.a_pokemon_valide():
+            RETOURNER {
+                "peut": False,
+                "raison": "Vous n'avez aucun Pokémon en état de combattre !"
+            }
+
+        # Vérifier que le tournoi n'est pas déjà en cours
+        SI self.en_cours:
+            RETOURNER {
+                "peut": False,
+                "raison": "Un tournoi est déjà en cours"
+            }
+
+        RETOURNER {"peut": True, "raison": None}
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : inscrire
+    # -----------------------------------------------------------------
+    #
+    # Inscrit le joueur au tournoi.
+    # Déduit les frais et initialise le bracket.
+    #
+    # player : l'instance Player
+    #
+    # Retourne True si l'inscription a réussi, False sinon.
+
+    MÉTHODE inscrire(self, player):
+        verif ← self.peut_participer(player)
+        SI NOT verif["peut"]:
+            RETOURNER False
+
+        # Déduire les crédits
+        player.credits ← player.credits - FRAIS_TOURNOI
+
+        # Regénérer les adversaires (nouvelles équipes à chaque tentative)
+        self._generer_adversaires()
+
+        # Réinitialiser le bracket
+        self.round_actuel ← 0
+        self.resultats ← []
+        self.en_cours ← True
+        self.termine ← False
+
+        RETOURNER True
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODES D'ACCÈS (bracket)
+    # -----------------------------------------------------------------
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_nombre_rounds
+    # -----------------------------------------------------------------
+
+    MÉTHODE get_nombre_rounds(self):
+        RETOURNER len(self.rounds_config)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_nom_round
+    # -----------------------------------------------------------------
+
+    MÉTHODE get_nom_round(self, index):
+        SI index < len(self.rounds_config):
+            RETOURNER self.rounds_config[index].get("nom", "Round {}".format(index + 1))
+        RETOURNER "Round ???"
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_adversaire_round
+    # -----------------------------------------------------------------
+    #
+    # Retourne le Trainer du round donné.
+
+    MÉTHODE get_adversaire_round(self, index):
+        SI index < len(self.adversaires):
+            RETOURNER self.adversaires[index]
+        RETOURNER None
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_adversaire_actuel
+    # -----------------------------------------------------------------
+
+    MÉTHODE get_adversaire_actuel(self):
+        RETOURNER self.get_adversaire_round(self.round_actuel)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_tous_adversaires
+    # -----------------------------------------------------------------
+
+    MÉTHODE get_tous_adversaires(self):
+        RETOURNER self.adversaires
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : enregistrer_resultat
+    # -----------------------------------------------------------------
+    #
+    # Enregistre le résultat d'un round.
+    #
+    # victoire : True si le joueur a gagné, False sinon
+    #
+    # Retourne un dict avec l'état du tournoi après ce résultat.
+
+    MÉTHODE enregistrer_resultat(self, victoire):
+        SI victoire:
+            self.resultats.ajouter("victoire")
+            self.round_actuel ← self.round_actuel + 1
+
+            SI self.round_actuel >= self.get_nombre_rounds():
+                # Tous les rounds gagnés → tournoi gagné
+                self.termine ← True
+                self.en_cours ← False
+                RETOURNER {
+                    "tournoi_termine": True,
+                    "victoire_finale": True,
+                    "round_suivant": None
+                }
+            SINON:
+                RETOURNER {
+                    "tournoi_termine": False,
+                    "victoire_finale": False,
+                    "round_suivant": self.round_actuel
+                }
+
+        SINON:
+            self.resultats.ajouter("defaite")
+            self.termine ← True
+            self.en_cours ← False
+            RETOURNER {
+                "tournoi_termine": True,
+                "victoire_finale": False,
+                "round_suivant": None
+            }
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_resultats
+    # -----------------------------------------------------------------
+
+    MÉTHODE get_resultats(self):
+        RETOURNER self.resultats
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : is_round_gagne
+    # -----------------------------------------------------------------
+
+    MÉTHODE is_round_gagne(self, index):
+        SI index < len(self.resultats):
+            RETOURNER self.resultats[index] == "victoire"
+        RETOURNER False
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_progression
+    # -----------------------------------------------------------------
+    #
+    # Retourne un résumé de la progression pour l'affichage.
+
+    MÉTHODE get_progression(self):
+        RETOURNER {
+            "round_actuel": self.round_actuel,
+            "nombre_rounds": self.get_nombre_rounds(),
+            "resultats": self.resultats,
+            "en_cours": self.en_cours,
+            "termine": self.termine
+        }
