@@ -1,0 +1,566 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+
+importer pygame
+importer State depuis states.state
+importer (SCREEN_WIDTH, SCREEN_HEIGHT) depuis config.settings
+
+
+# =============================================================================
+# CONSTANTES LOCALES
+# =============================================================================
+
+MODE_MENU ← "menu"
+MODE_SAUVEGARDE ← "sauvegarde"
+MODE_CONFIRM_QUITTER ← "confirm_quitter"
+MODE_CONFIRM_MENU ← "confirm_menu"
+DUREE_MESSAGE ← 2.0
+
+
+# =============================================================================
+# CLASSE STATE MENU PAUSE
+# =============================================================================
+#
+# Menu pause transparent. Pushé par-dessus l'exploration.
+# Accès à la sauvegarde, au pokédex, aux quêtes, et au retour menu.
+
+CLASSE StateMenuPause (hérite de State):
+
+    transparent ← True
+
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+
+    MÉTHODE __init__(self, game_manager):
+        super().__init__(game_manager)
+
+        # --- POLICES ---
+        self.font_titre ← pygame.font.Font(None, 38)
+        self.font_option ← pygame.font.Font(None, 28)
+        self.font_info ← pygame.font.Font(None, 20)
+        self.font_message ← pygame.font.Font(None, 26)
+        self.font_confirm ← pygame.font.Font(None, 26)
+
+        # --- OPTIONS ---
+        self.options ← [
+            "Reprendre",
+            "Pokédex",
+            "Quêtes",
+            "Sauvegarder",
+            "Menu principal",
+            "Quitter le jeu"
+        ]
+
+        # --- NAVIGATION ---
+        self.selection_index ← 0
+
+        # --- MODE ---
+        self.mode ← MODE_MENU
+        self.confirm_index ← 0    # 0 = Oui, 1 = Non
+
+        # --- SAUVEGARDE ---
+        self.slot_selection ← 0
+        self.slots_info ← None
+
+        # --- MESSAGE ---
+        self.message_temporaire ← None
+        self.message_timer ← 0
+        self.message_couleur ← (255, 255, 255)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : on_enter
+    # -----------------------------------------------------------------
+
+    MÉTHODE on_enter(self):
+        # Pas de changement de musique — la musique de la zone continue
+        passer
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : handle_events
+    # -----------------------------------------------------------------
+
+    MÉTHODE handle_events(self, events):
+        POUR CHAQUE event DANS events:
+            SI event.type != pygame.KEYDOWN:
+                CONTINUER
+
+            SI self.mode == MODE_MENU:
+                self._handle_menu(event)
+            SINON SI self.mode == MODE_SAUVEGARDE:
+                self._handle_sauvegarde(event)
+            SINON SI self.mode == MODE_CONFIRM_QUITTER:
+                self._handle_confirm(event, "quitter")
+            SINON SI self.mode == MODE_CONFIRM_MENU:
+                self._handle_confirm(event, "menu")
+
+
+    # -----------------------------------------------------------------
+    # HANDLE MENU PRINCIPAL
+    # -----------------------------------------------------------------
+
+    MÉTHODE _handle_menu(self, event):
+
+        # --- FERMER LE MENU (Échap) ---
+        SI event.key == pygame.K_ESCAPE:
+            self.game_manager.state_manager.pop()
+            RETOURNER
+
+        # --- NAVIGUER ---
+        SI event.key == pygame.K_UP:
+            ancien ← self.selection_index
+            self.selection_index ← max(0, self.selection_index - 1)
+            SI self.selection_index != ancien:
+                self.game_manager.audio_manager.play_sfx("menu_select")
+
+        SINON SI event.key == pygame.K_DOWN:
+            ancien ← self.selection_index
+            self.selection_index ← min(len(self.options) - 1, self.selection_index + 1)
+            SI self.selection_index != ancien:
+                self.game_manager.audio_manager.play_sfx("menu_select")
+
+        # --- VALIDER ---
+        SINON SI event.key EST dans [pygame.K_SPACE, pygame.K_RETURN]:
+            self._executer_option()
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _executer_option
+    # -----------------------------------------------------------------
+
+    MÉTHODE _executer_option(self):
+        option ← self.options[self.selection_index]
+
+        # --- REPRENDRE ---
+        SI option == "Reprendre":
+            self.game_manager.state_manager.pop()
+
+        # --- POKÉDEX ---
+        SINON SI option == "Pokédex":
+            importer StatePokedex depuis states.state_pokedex
+            pokedex ← StatePokedex(self.game_manager)
+            self.game_manager.state_manager.push(pokedex)
+
+        # --- QUÊTES ---
+        SINON SI option == "Quêtes":
+            self._ouvrir_quetes()
+
+        # --- SAUVEGARDER ---
+        SINON SI option == "Sauvegarder":
+            self._commencer_sauvegarde()
+
+        # --- MENU PRINCIPAL ---
+        SINON SI option == "Menu principal":
+            self.mode ← MODE_CONFIRM_MENU
+            self.confirm_index ← 1    # défaut sur Non (sécurité)
+
+        # --- QUITTER ---
+        SINON SI option == "Quitter le jeu":
+            self.mode ← MODE_CONFIRM_QUITTER
+            self.confirm_index ← 1    # défaut sur Non
+
+
+    # -----------------------------------------------------------------
+    # OUVRIR LES QUÊTES
+    # -----------------------------------------------------------------
+    #
+    # Affiche les quêtes actives et leur progression.
+    # Pour simplifier, on intègre les quêtes comme un sous-mode
+    # plutôt qu'un état séparé. Mais on pourrait aussi pusher un
+    # StateQuestScreen si on veut un écran dédié.
+    #
+    # Pour l'instant on utilise un état simplifié.
+
+    MÉTHODE _ouvrir_quetes(self):
+        # Option 1 : état séparé (plus propre)
+        # importer StateQuestScreen depuis states.state_quest_screen
+        # self.game_manager.state_manager.push(StateQuestScreen(self.game_manager))
+
+        # Option 2 : afficher un message temporaire avec un résumé
+        # (placeholder en attendant l'écran de quêtes)
+        quest_manager ← self.game_manager.quest_manager
+        player ← self.game_manager.player
+
+        SI quest_manager EST None:
+            self._afficher_message("Aucune quête disponible", (150, 150, 150))
+            RETOURNER
+
+        actives ← player.quests_active
+        SI len(actives) == 0:
+            self._afficher_message("Aucune quête en cours", (150, 150, 150))
+        SINON:
+            nb ← len(actives)
+            self._afficher_message("{} quête(s) en cours".format(nb), (180, 220, 255))
+
+
+    # -----------------------------------------------------------------
+    # SAUVEGARDE
+    # -----------------------------------------------------------------
+
+    MÉTHODE _commencer_sauvegarde(self):
+        SI self.game_manager.save_slot_actuel EST NOT None:
+            # Slot déjà assigné → sauvegarder directement
+            self._effectuer_sauvegarde(self.game_manager.save_slot_actuel)
+        SINON:
+            # Pas de slot → proposer les 3 slots
+            self._charger_info_slots()
+            self.mode ← MODE_SAUVEGARDE
+            self.slot_selection ← 0
+
+
+    MÉTHODE _charger_info_slots(self):
+        ESSAYER:
+            importer SaveManager depuis core.save_manager
+            save_manager ← SaveManager()
+            self.slots_info ← save_manager.get_all_slots_info()
+        EN CAS D'ERREUR:
+            self.slots_info ← [None, None, None]
+
+
+    MÉTHODE _effectuer_sauvegarde(self, slot_index):
+        ESSAYER:
+            importer SaveManager depuis core.save_manager
+            save_manager ← SaveManager()
+            save_manager.save(self.game_manager, slot_index)
+            self.game_manager.save_slot_actuel ← slot_index
+            self._afficher_message("Partie sauvegardée !", (100, 255, 100))
+            self.mode ← MODE_MENU
+        EN CAS D'ERREUR comme e:
+            self._afficher_message("Erreur de sauvegarde", (255, 100, 100))
+            self.mode ← MODE_MENU
+
+
+    # -----------------------------------------------------------------
+    # HANDLE SAUVEGARDE (choix de slot)
+    # -----------------------------------------------------------------
+
+    MÉTHODE _handle_sauvegarde(self, event):
+
+        # --- ANNULER ---
+        SI event.key == pygame.K_ESCAPE:
+            self.mode ← MODE_MENU
+            RETOURNER
+
+        # --- NAVIGUER ---
+        SI event.key == pygame.K_UP:
+            self.slot_selection ← max(0, self.slot_selection - 1)
+            self.game_manager.audio_manager.play_sfx("menu_select")
+
+        SINON SI event.key == pygame.K_DOWN:
+            self.slot_selection ← min(2, self.slot_selection + 1)
+            self.game_manager.audio_manager.play_sfx("menu_select")
+
+        # --- VALIDER ---
+        SINON SI event.key EST dans [pygame.K_SPACE, pygame.K_RETURN]:
+            self._effectuer_sauvegarde(self.slot_selection)
+
+
+    # -----------------------------------------------------------------
+    # HANDLE CONFIRMATION (quitter / menu principal)
+    # -----------------------------------------------------------------
+    #
+    # Réutilisé pour les deux confirmations.
+    # action : "quitter" ou "menu"
+
+    MÉTHODE _handle_confirm(self, event, action):
+
+        # --- ANNULER ---
+        SI event.key == pygame.K_ESCAPE:
+            self.mode ← MODE_MENU
+            RETOURNER
+
+        # --- NAVIGUER OUI / NON ---
+        SI event.key == pygame.K_LEFT:
+            self.confirm_index ← 0
+        SINON SI event.key == pygame.K_RIGHT:
+            self.confirm_index ← 1
+
+        # --- VALIDER ---
+        SINON SI event.key EST dans [pygame.K_SPACE, pygame.K_RETURN]:
+            SI self.confirm_index == 0:
+                # OUI
+                SI action == "quitter":
+                    self.game_manager.running ← False
+                SINON SI action == "menu":
+                    self._retour_menu_principal()
+            SINON:
+                # NON → retour au menu pause
+                self.mode ← MODE_MENU
+
+
+    # -----------------------------------------------------------------
+    # RETOUR AU MENU PRINCIPAL
+    # -----------------------------------------------------------------
+    #
+    # Vide la pile d'états et push un nouveau StateMenu.
+    # Le game_manager garde ses managers techniques mais perd
+    # les données de la partie en cours.
+
+    MÉTHODE _retour_menu_principal(self):
+        importer StateMenu depuis states.state_menu
+
+        # Vider toute la pile
+        self.game_manager.state_manager.clear()
+
+        # Nettoyer les données de la partie
+        self.game_manager.player ← None
+        self.game_manager.quest_manager ← None
+        self.game_manager.save_slot_actuel ← None
+
+        # Pusher le menu principal
+        menu ← StateMenu(self.game_manager)
+        self.game_manager.state_manager.push(menu)
+
+
+    # -----------------------------------------------------------------
+    # UTILITAIRES
+    # -----------------------------------------------------------------
+
+    MÉTHODE _afficher_message(self, texte, couleur):
+        self.message_temporaire ← texte
+        self.message_couleur ← couleur
+        self.message_timer ← DUREE_MESSAGE
+
+    MÉTHODE _formater_temps_jeu(self):
+        SI self.game_manager.player EST None:
+            RETOURNER "00:00:00"
+
+        secondes_totales ← int(self.game_manager.player.play_time)
+        heures ← secondes_totales // 3600
+        minutes ← (secondes_totales % 3600) // 60
+        secondes ← secondes_totales % 60
+        RETOURNER "{:02d}:{:02d}:{:02d}".format(heures, minutes, secondes)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : update
+    # -----------------------------------------------------------------
+
+    MÉTHODE update(self, dt):
+        SI self.message_temporaire EST NOT None:
+            self.message_timer ← self.message_timer - dt
+            SI self.message_timer <= 0:
+                self.message_temporaire ← None
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : render
+    # -----------------------------------------------------------------
+
+    MÉTHODE render(self, screen):
+        # --- OVERLAY SOMBRE ---
+        overlay ← pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+        overlay.fill((0, 0, 0))
+        overlay.set_alpha(140)
+        screen.blit(overlay, (0, 0))
+
+        SI self.mode == MODE_MENU:
+            self._draw_menu(screen)
+
+        SINON SI self.mode == MODE_SAUVEGARDE:
+            self._draw_sauvegarde(screen)
+
+        SINON SI self.mode == MODE_CONFIRM_QUITTER:
+            self._draw_confirmation(screen, "Quitter le jeu ?",
+                "La progression non sauvegardée sera perdue.")
+
+        SINON SI self.mode == MODE_CONFIRM_MENU:
+            self._draw_confirmation(screen, "Retour au menu principal ?",
+                "La progression non sauvegardée sera perdue.")
+
+        # --- MESSAGE ---
+        SI self.message_temporaire EST NOT None:
+            self._draw_message(screen)
+
+
+    # -----------------------------------------------------------------
+    # RENDU : MENU PRINCIPAL
+    # -----------------------------------------------------------------
+
+    MÉTHODE _draw_menu(self, screen):
+        # Cadre central
+        cadre_largeur ← 300
+        cadre_hauteur ← 380
+        cadre_x ← (SCREEN_WIDTH - cadre_largeur) / 2
+        cadre_y ← (SCREEN_HEIGHT - cadre_hauteur) / 2
+
+        fond ← pygame.Surface((cadre_largeur, cadre_hauteur))
+        fond.fill((30, 30, 55))
+        screen.blit(fond, (cadre_x, cadre_y))
+        pygame.draw.rect(screen, (100, 100, 150),
+            (cadre_x, cadre_y, cadre_largeur, cadre_hauteur), 2)
+
+        # --- TITRE ---
+        surface_titre ← self.font_titre.render("Pause", True, (255, 255, 255))
+        titre_x ← cadre_x + (cadre_largeur - surface_titre.get_width()) / 2
+        screen.blit(surface_titre, (titre_x, cadre_y + 15))
+
+        # --- TEMPS DE JEU ---
+        temps ← self._formater_temps_jeu()
+        surface_temps ← self.font_info.render(
+            "Temps de jeu: {}".format(temps), True, (150, 180, 220))
+        temps_x ← cadre_x + (cadre_largeur - surface_temps.get_width()) / 2
+        screen.blit(surface_temps, (temps_x, cadre_y + 50))
+
+        # --- OPTIONS ---
+        POUR i, option DANS enumerate(self.options):
+            y ← cadre_y + 90 + i × 42
+
+            # Surbrillance
+            SI i == self.selection_index:
+                fond_opt ← pygame.Rect(cadre_x + 15, y - 3, cadre_largeur - 30, 36)
+                pygame.draw.rect(screen, (50, 50, 80), fond_opt)
+
+            # Couleur
+            SI i == self.selection_index:
+                couleur ← (255, 255, 255)
+                prefixe ← "> "
+            SINON:
+                couleur ← (180, 180, 180)
+                prefixe ← "  "
+
+            # Couleur spéciale pour Quitter (rouge)
+            SI option == "Quitter le jeu" ET i == self.selection_index:
+                couleur ← (255, 120, 120)
+
+            surface_opt ← self.font_option.render(prefixe + option, True, couleur)
+            screen.blit(surface_opt, (cadre_x + 25, y + 5))
+
+        # --- INDICATION ---
+        surface_hint ← self.font_info.render("[Échap] Reprendre", True, (100, 100, 100))
+        hint_x ← cadre_x + (cadre_largeur - surface_hint.get_width()) / 2
+        screen.blit(surface_hint, (hint_x, cadre_y + cadre_hauteur - 28))
+
+
+    # -----------------------------------------------------------------
+    # RENDU : CHOIX DE SLOT DE SAUVEGARDE
+    # -----------------------------------------------------------------
+
+    MÉTHODE _draw_sauvegarde(self, screen):
+        cadre_largeur ← 450
+        cadre_hauteur ← 280
+        cadre_x ← (SCREEN_WIDTH - cadre_largeur) / 2
+        cadre_y ← (SCREEN_HEIGHT - cadre_hauteur) / 2
+
+        fond ← pygame.Surface((cadre_largeur, cadre_hauteur))
+        fond.fill((30, 30, 55))
+        screen.blit(fond, (cadre_x, cadre_y))
+        pygame.draw.rect(screen, (100, 100, 150),
+            (cadre_x, cadre_y, cadre_largeur, cadre_hauteur), 2)
+
+        # Titre
+        surface_titre ← self.font_option.render("Choisir un slot", True, (255, 255, 255))
+        titre_x ← cadre_x + (cadre_largeur - surface_titre.get_width()) / 2
+        screen.blit(surface_titre, (titre_x, cadre_y + 15))
+
+        # Les 3 slots
+        POUR i DE 0 À 2:
+            y ← cadre_y + 60 + i × 65
+            slot_rect ← pygame.Rect(cadre_x + 20, y, cadre_largeur - 40, 55)
+
+            # Surbrillance
+            SI i == self.slot_selection:
+                pygame.draw.rect(screen, (50, 50, 80), slot_rect)
+
+            pygame.draw.rect(screen, (80, 80, 120), slot_rect, 1)
+
+            SI self.slots_info EST NOT None ET self.slots_info[i] EST NOT None ET self.slots_info[i].get("occupied", False):
+                slot ← self.slots_info[i]
+                texte_slot ← "Slot {} — {} (Nv.{}, {})".format(
+                    i + 1,
+                    slot.get("trainer_name", "???"),
+                    slot.get("max_level", "?"),
+                    slot.get("zone", "?")
+                )
+                couleur_slot ← (255, 200, 100)
+
+                # Avertissement : écraser
+                SI i == self.slot_selection:
+                    surface_warn ← self.font_info.render(
+                        "⚠ Écrasera la sauvegarde existante", True, (255, 150, 100))
+                    screen.blit(surface_warn, (cadre_x + 30, y + 32))
+            SINON:
+                texte_slot ← "Slot {} — Vide".format(i + 1)
+                couleur_slot ← (150, 150, 150)
+
+            prefixe ← "> " SI i == self.slot_selection SINON "  "
+            surface_slot ← self.font_option.render(
+                prefixe + texte_slot, True, couleur_slot)
+            screen.blit(surface_slot, (cadre_x + 25, y + 8))
+
+        # Indication
+        surface_hint ← self.font_info.render(
+            "[↑↓] Naviguer  [Entrée] Sauvegarder  [Échap] Annuler", True, (100, 100, 100))
+        hint_x ← cadre_x + (cadre_largeur - surface_hint.get_width()) / 2
+        screen.blit(surface_hint, (hint_x, cadre_y + cadre_hauteur - 28))
+
+
+    # -----------------------------------------------------------------
+    # RENDU : CONFIRMATION (générique)
+    # -----------------------------------------------------------------
+    #
+    # Réutilisé pour "Quitter ?" et "Menu principal ?".
+    # titre : la question
+    # sous_texte : l'avertissement
+
+    MÉTHODE _draw_confirmation(self, screen, titre, sous_texte):
+        cadre_largeur ← 480
+        cadre_hauteur ← 150
+        cadre_x ← (SCREEN_WIDTH - cadre_largeur) / 2
+        cadre_y ← (SCREEN_HEIGHT - cadre_hauteur) / 2
+
+        fond ← pygame.Surface((cadre_largeur, cadre_hauteur))
+        fond.fill((35, 30, 50))
+        screen.blit(fond, (cadre_x, cadre_y))
+        pygame.draw.rect(screen, (255, 150, 100),
+            (cadre_x, cadre_y, cadre_largeur, cadre_hauteur), 3)
+
+        # Question
+        surface_q ← self.font_confirm.render(titre, True, (255, 255, 255))
+        q_x ← cadre_x + (cadre_largeur - surface_q.get_width()) / 2
+        screen.blit(surface_q, (q_x, cadre_y + 20))
+
+        # Sous-texte
+        surface_st ← self.font_info.render(sous_texte, True, (255, 180, 130))
+        st_x ← cadre_x + (cadre_largeur - surface_st.get_width()) / 2
+        screen.blit(surface_st, (st_x, cadre_y + 52))
+
+        # Oui / Non
+        options_confirm ← ["Oui", "Non"]
+        POUR i, option DANS enumerate(options_confirm):
+            SI i == self.confirm_index:
+                couleur ← (255, 220, 50)
+                prefixe ← "> "
+            SINON:
+                couleur ← (180, 180, 180)
+                prefixe ← "  "
+
+            surface_opt ← self.font_confirm.render(prefixe + option, True, couleur)
+            opt_x ← cadre_x + 140 + i × 150
+            screen.blit(surface_opt, (opt_x, cadre_y + 95))
+
+
+    # -----------------------------------------------------------------
+    # RENDU : MESSAGE TEMPORAIRE
+    # -----------------------------------------------------------------
+
+    MÉTHODE _draw_message(self, screen):
+        surface_texte ← self.font_message.render(
+            self.message_temporaire, True, self.message_couleur)
+
+        padding ← 15
+        fond_largeur ← surface_texte.get_width() + padding × 2
+        fond_hauteur ← surface_texte.get_height() + padding
+        fond ← pygame.Surface((fond_largeur, fond_hauteur))
+        fond.fill((0, 0, 0))
+        fond.set_alpha(200)
+
+        centre_x ← (SCREEN_WIDTH - fond_largeur) / 2
+        centre_y ← SCREEN_HEIGHT / 2 + 100
+
+        screen.blit(fond, (centre_x, centre_y))
+        screen.blit(surface_texte, (centre_x + padding, centre_y + padding / 2))
