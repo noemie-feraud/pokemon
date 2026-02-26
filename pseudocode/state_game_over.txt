@@ -1,0 +1,570 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+
+importer pygame
+importer State depuis states.state
+importer (SCREEN_WIDTH, SCREEN_HEIGHT, TOTAL_POKEMON) depuis config.settings
+
+
+# =============================================================================
+# CONSTANTES LOCALES
+# =============================================================================
+
+MODE_ECRAN ← "ecran"
+MODE_CONFIRM_MENU ← "confirm_menu"
+
+
+# =============================================================================
+# CLASSE STATE GAME OVER
+# =============================================================================
+#
+# Écran de victoire du tournoi. Pushé par state_tournament.
+# Le joueur peut continuer l'aventure ou retourner au menu principal.
+
+CLASSE StateGameOver (hérite de State):
+
+    transparent ← False
+
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+
+    MÉTHODE __init__(self, game_manager):
+        super().__init__(game_manager)
+
+        self.player ← game_manager.player
+
+        # --- POLICES ---
+        self.font_titre ← pygame.font.Font(None, 46)
+        self.font_sous_titre ← pygame.font.Font(None, 30)
+        self.font_stat ← pygame.font.Font(None, 24)
+        self.font_leaderboard ← pygame.font.Font(None, 22)
+        self.font_info ← pygame.font.Font(None, 20)
+        self.font_choix ← pygame.font.Font(None, 28)
+        self.font_confirm ← pygame.font.Font(None, 26)
+
+        # --- STATS DE LA PARTIE ---
+        self.stats_partie ← self._calculer_stats()
+
+        # --- LEADERBOARD ---
+        self.leaderboard_entries ← self._charger_leaderboard()
+
+        # --- CHOIX ---
+        self.mode ← MODE_ECRAN
+        self.choix_index ← 0          # 0 = Continuer, 1 = Menu principal
+        self.confirm_index ← 1        # défaut sur Non (sécurité)
+
+        # --- SAUVEGARDE AUTOMATIQUE ---
+        self._sauvegarder()
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _calculer_stats
+    # -----------------------------------------------------------------
+
+    MÉTHODE _calculer_stats(self):
+        player ← self.player
+
+        SI player EST None:
+            RETOURNER {
+                "nom": "???",
+                "temps": "00h00",
+                "temps_secondes": 0,
+                "pokemon_captures": 0,
+                "pokedex_vus": 0,
+                "pokedex_pourcent": 0,
+                "credits": 0,
+                "dresseurs_battus": 0,
+                "equipe_taille": 0,
+                "stockage_taille": 0
+            }
+
+        temps_secondes ← int(player.play_time)
+        heures ← temps_secondes // 3600
+        minutes ← (temps_secondes % 3600) // 60
+
+        pokedex_vus ← player.pokedex.get_total_vus()
+        pokedex_pourcent ← int((pokedex_vus / TOTAL_POKEMON) × 100) SI TOTAL_POKEMON > 0 SINON 0
+
+        RETOURNER {
+            "nom": player.name,
+            "temps": "{:02d}h{:02d}".format(heures, minutes),
+            "temps_secondes": temps_secondes,
+            "pokemon_captures": player.pokedex.get_total_captures(),
+            "pokedex_vus": pokedex_vus,
+            "pokedex_pourcent": pokedex_pourcent,
+            "credits": player.credits,
+            "dresseurs_battus": len(player.trainers_beaten),
+            "equipe_taille": len(player.team.pokemons),
+            "stockage_taille": len(player.storage.pokemons)
+        }
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _charger_leaderboard
+    # -----------------------------------------------------------------
+
+    MÉTHODE _charger_leaderboard(self):
+        ESSAYER:
+            importer Leaderboard depuis endgame.leaderboard
+            leaderboard ← Leaderboard()
+            entries ← leaderboard.get_classement()
+            RETOURNER entries
+        EN CAS D'ERREUR:
+            RETOURNER []
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _sauvegarder
+    # -----------------------------------------------------------------
+    #
+    # Sauvegarde automatique après la victoire.
+    # La partie N'EST PAS verrouillée — le joueur peut la reprendre.
+    # On ajoute juste un flag tournoi_gagne pour l'affichage
+    # dans l'écran de chargement.
+
+    MÉTHODE _sauvegarder(self):
+        ESSAYER:
+            importer SaveManager depuis core.save_manager
+            SI self.game_manager.save_slot_actuel EST NOT None:
+                player ← self.game_manager.player
+                player.tournoi_gagne ← True
+                save_manager ← SaveManager()
+                save_manager.save(
+                    self.game_manager,
+                    self.game_manager.save_slot_actuel
+                )
+        EN CAS D'ERREUR:
+            passer
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : on_enter
+    # -----------------------------------------------------------------
+
+    MÉTHODE on_enter(self):
+        self.game_manager.audio_manager.play_music("victory")
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : handle_events
+    # -----------------------------------------------------------------
+
+    MÉTHODE handle_events(self, events):
+        POUR CHAQUE event DANS events:
+            SI event.type != pygame.KEYDOWN:
+                CONTINUER
+
+            SI self.mode == MODE_ECRAN:
+                self._handle_ecran(event)
+            SINON SI self.mode == MODE_CONFIRM_MENU:
+                self._handle_confirm_menu(event)
+
+
+    # -----------------------------------------------------------------
+    # HANDLE ÉCRAN PRINCIPAL
+    # -----------------------------------------------------------------
+
+    MÉTHODE _handle_ecran(self, event):
+
+        # --- NAVIGUER ENTRE LES DEUX CHOIX ---
+        SI event.key == pygame.K_LEFT:
+            SI self.choix_index != 0:
+                self.choix_index ← 0
+                self.game_manager.audio_manager.play_sfx("menu_select")
+
+        SINON SI event.key == pygame.K_RIGHT:
+            SI self.choix_index != 1:
+                self.choix_index ← 1
+                self.game_manager.audio_manager.play_sfx("menu_select")
+
+        # --- VALIDER ---
+        SINON SI event.key EST dans [pygame.K_SPACE, pygame.K_RETURN]:
+            SI self.choix_index == 0:
+                # Continuer l'aventure
+                self._continuer_aventure()
+            SINON:
+                # Menu principal → demander confirmation
+                self.mode ← MODE_CONFIRM_MENU
+                self.confirm_index ← 1    # défaut sur Non
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _continuer_aventure
+    # -----------------------------------------------------------------
+    #
+    # Le joueur reprend l'exploration.
+    # On pop le GameOver ET le Tournoi pour revenir à l'exploration.
+    #
+    # Pile avant : [exploration, tournoi, game_over]
+    # Pile après : [exploration]
+    #
+    # L'exploration retrouve son on_enter() qui relance la musique
+    # de la zone Arena. Le joueur est exactement là où il était
+    # quand il a lancé le tournoi.
+
+    MÉTHODE _continuer_aventure(self):
+        state_manager ← self.game_manager.state_manager
+
+        # Pop le GameOver (nous-même)
+        state_manager.pop()
+
+        # Pop le Tournoi
+        state_manager.pop()
+
+        # L'exploration redevient active → on_enter() est appelé
+
+
+    # -----------------------------------------------------------------
+    # HANDLE CONFIRMATION MENU PRINCIPAL
+    # -----------------------------------------------------------------
+
+    MÉTHODE _handle_confirm_menu(self, event):
+
+        # --- ANNULER ---
+        SI event.key == pygame.K_ESCAPE:
+            self.mode ← MODE_ECRAN
+            RETOURNER
+
+        # --- NAVIGUER ---
+        SI event.key == pygame.K_LEFT:
+            self.confirm_index ← 0
+        SINON SI event.key == pygame.K_RIGHT:
+            self.confirm_index ← 1
+
+        # --- VALIDER ---
+        SINON SI event.key EST dans [pygame.K_SPACE, pygame.K_RETURN]:
+            SI self.confirm_index == 0:
+                # OUI → retour au menu principal
+                self._retour_menu()
+            SINON:
+                # NON → retour à l'écran de victoire
+                self.mode ← MODE_ECRAN
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _retour_menu
+    # -----------------------------------------------------------------
+    #
+    # Retourne au menu principal.
+    # Vide toute la pile et push un nouveau StateMenu.
+
+    MÉTHODE _retour_menu(self):
+        importer StateMenu depuis states.state_menu
+
+        # Nettoyer les données de la partie
+        self.game_manager.player ← None
+        self.game_manager.quest_manager ← None
+        self.game_manager.save_slot_actuel ← None
+
+        # Vider la pile
+        self.game_manager.state_manager.clear()
+
+        # Nouveau menu
+        menu ← StateMenu(self.game_manager)
+        self.game_manager.state_manager.push(menu)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : update
+    # -----------------------------------------------------------------
+
+    MÉTHODE update(self, dt):
+        passer
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : render
+    # -----------------------------------------------------------------
+
+    MÉTHODE render(self, screen):
+        screen.fill((10, 10, 25))
+
+        self._draw_titre(screen)
+        self._draw_stats(screen)
+        self._draw_leaderboard(screen)
+        self._draw_choix(screen)
+
+        SI self.mode == MODE_CONFIRM_MENU:
+            self._draw_confirmation(screen)
+
+
+    # -----------------------------------------------------------------
+    # RENDU : TITRE
+    # -----------------------------------------------------------------
+
+    MÉTHODE _draw_titre(self, screen):
+        texte_stars ← "★  ★  ★"
+        surface_stars ← self.font_sous_titre.render(texte_stars, True, (255, 220, 50))
+        stars_x ← (SCREEN_WIDTH - surface_stars.get_width()) / 2
+        screen.blit(surface_stars, (stars_x, 25))
+
+        texte_titre ← "FÉLICITATIONS !"
+        surface_titre ← self.font_titre.render(texte_titre, True, (255, 220, 50))
+        titre_x ← (SCREEN_WIDTH - surface_titre.get_width()) / 2
+        screen.blit(surface_titre, (titre_x, 55))
+
+        texte_sous ← "Tu as remporté le Tournoi de La Plateforme !"
+        surface_sous ← self.font_sous_titre.render(texte_sous, True, (220, 220, 255))
+        sous_x ← (SCREEN_WIDTH - surface_sous.get_width()) / 2
+        screen.blit(surface_sous, (sous_x, 105))
+
+
+    # -----------------------------------------------------------------
+    # RENDU : STATS DE LA PARTIE
+    # -----------------------------------------------------------------
+
+    MÉTHODE _draw_stats(self, screen):
+        stats ← self.stats_partie
+
+        # Cadre
+        cadre_x ← 100
+        cadre_y ← 155
+        cadre_largeur ← SCREEN_WIDTH - 200
+        cadre_hauteur ← 220
+
+        pygame.draw.rect(screen, (25, 30, 50),
+            (cadre_x, cadre_y, cadre_largeur, cadre_hauteur))
+        pygame.draw.rect(screen, (80, 100, 160),
+            (cadre_x, cadre_y, cadre_largeur, cadre_hauteur), 2)
+
+        # Titre du cadre
+        surface_titre ← self.font_stat.render("Résumé de la partie", True, (180, 200, 255))
+        screen.blit(surface_titre, (cadre_x + 20, cadre_y + 12))
+
+        # Stats en deux colonnes
+        col1_x ← cadre_x + 30
+        col2_x ← cadre_x + cadre_largeur / 2 + 20
+        ligne_y ← cadre_y + 45
+        espacement ← 28
+
+        # Colonne 1
+        stats_col1 ← [
+            ("Dresseur", stats["nom"]),
+            ("Temps de jeu", stats["temps"]),
+            ("Pokémon capturés", str(stats["pokemon_captures"])),
+            ("Équipe", "{} Pokémon".format(stats["equipe_taille"])),
+            ("Stockage", "{} Pokémon".format(stats["stockage_taille"]))
+        ]
+
+        POUR i, (label, valeur) DANS enumerate(stats_col1):
+            y ← ligne_y + i × espacement
+            surface_label ← self.font_stat.render(label + " :", True, (150, 160, 200))
+            screen.blit(surface_label, (col1_x, y))
+            surface_val ← self.font_stat.render(valeur, True, (255, 255, 255))
+            screen.blit(surface_val, (col1_x + 200, y))
+
+        # Colonne 2
+        stats_col2 ← [
+            ("Pokédex", "{}/{} ({}%)".format(
+                stats["pokedex_vus"], TOTAL_POKEMON, stats["pokedex_pourcent"])),
+            ("Dresseurs battus", str(stats["dresseurs_battus"])),
+            ("Crédits totaux", str(stats["credits"]))
+        ]
+
+        POUR i, (label, valeur) DANS enumerate(stats_col2):
+            y ← ligne_y + i × espacement
+            surface_label ← self.font_stat.render(label + " :", True, (150, 160, 200))
+            screen.blit(surface_label, (col2_x, y))
+            surface_val ← self.font_stat.render(valeur, True, (255, 255, 255))
+            screen.blit(surface_val, (col2_x + 200, y))
+
+        # Barre de pokédex
+        barre_y ← ligne_y + 3 × espacement + 5
+        barre_x ← col2_x
+        barre_largeur ← 200
+        barre_hauteur ← 10
+        ratio ← stats["pokedex_vus"] / TOTAL_POKEMON SI TOTAL_POKEMON > 0 SINON 0
+
+        pygame.draw.rect(screen, (40, 40, 60),
+            (barre_x, barre_y, barre_largeur, barre_hauteur))
+        remplissage ← int(barre_largeur × ratio)
+        SI remplissage > 0:
+            SI ratio >= 1.0:
+                couleur_barre ← (255, 220, 50)
+            SINON SI ratio >= 0.75:
+                couleur_barre ← (100, 255, 100)
+            SINON:
+                couleur_barre ← (100, 180, 255)
+
+            pygame.draw.rect(screen, couleur_barre,
+                (barre_x, barre_y, remplissage, barre_hauteur))
+
+        # Message spécial si pokédex complet
+        SI stats["pokedex_pourcent"] >= 100:
+            texte_complet ← "★ Pokédex complet ! Maître Pokémon ! ★"
+            surface_complet ← self.font_stat.render(texte_complet, True, (255, 220, 50))
+            cx ← (SCREEN_WIDTH - surface_complet.get_width()) / 2
+            screen.blit(surface_complet, (cx, cadre_y + cadre_hauteur - 28))
+
+
+    # -----------------------------------------------------------------
+    # RENDU : LEADERBOARD
+    # -----------------------------------------------------------------
+
+    MÉTHODE _draw_leaderboard(self, screen):
+        cadre_x ← 100
+        cadre_y ← 390
+        cadre_largeur ← SCREEN_WIDTH - 200
+        cadre_hauteur ← 175
+
+        pygame.draw.rect(screen, (25, 25, 45),
+            (cadre_x, cadre_y, cadre_largeur, cadre_hauteur))
+        pygame.draw.rect(screen, (80, 80, 130),
+            (cadre_x, cadre_y, cadre_largeur, cadre_hauteur), 2)
+
+        # Titre
+        surface_titre ← self.font_stat.render("Classement", True, (255, 220, 50))
+        screen.blit(surface_titre, (cadre_x + 20, cadre_y + 10))
+
+        # En-têtes
+        header_y ← cadre_y + 38
+        headers ← ["#", "Dresseur", "Temps", "Pokédex", "Capturés"]
+        positions_x ← [cadre_x + 20, cadre_x + 55, cadre_x + 220, cadre_x + 340, cadre_x + 480]
+
+        POUR i, header DANS enumerate(headers):
+            surface ← self.font_info.render(header, True, (140, 150, 190))
+            screen.blit(surface, (positions_x[i], header_y))
+
+        pygame.draw.line(screen, (60, 60, 90),
+            (cadre_x + 15, header_y + 22),
+            (cadre_x + cadre_largeur - 15, header_y + 22), 1)
+
+        # Entrées (max 5)
+        SI len(self.leaderboard_entries) == 0:
+            surface_vide ← self.font_leaderboard.render(
+                "Aucune entrée", True, (100, 100, 100))
+            screen.blit(surface_vide, (cadre_x + 30, header_y + 35))
+            RETOURNER
+
+        nb_affiche ← min(5, len(self.leaderboard_entries))
+
+        POUR i DE 0 À nb_affiche - 1:
+            entry ← self.leaderboard_entries[i]
+            y ← header_y + 30 + i × 24
+
+            # Surbrillance si c'est la partie actuelle
+            est_partie_actuelle ← (
+                entry.get("nom") == self.stats_partie["nom"] ET
+                entry.get("temps_secondes") == self.stats_partie.get("temps_secondes", -1)
+            )
+
+            SI est_partie_actuelle:
+                fond_rect ← pygame.Rect(cadre_x + 10, y - 2, cadre_largeur - 20, 22)
+                pygame.draw.rect(screen, (40, 45, 70), fond_rect)
+                couleur ← (255, 220, 100)
+            SINON:
+                couleur ← (200, 200, 220)
+
+            # Rang
+            surface_rang ← self.font_leaderboard.render(str(i + 1), True, couleur)
+            screen.blit(surface_rang, (positions_x[0], y))
+
+            # Nom
+            surface_nom ← self.font_leaderboard.render(
+                entry.get("nom", "???"), True, couleur)
+            screen.blit(surface_nom, (positions_x[1], y))
+
+            # Temps
+            surface_temps ← self.font_leaderboard.render(
+                entry.get("temps_formate", "??h??"), True, couleur)
+            screen.blit(surface_temps, (positions_x[2], y))
+
+            # Pokédex
+            texte_dex ← "{}/54".format(entry.get("pokedex_count", 0))
+            surface_dex ← self.font_leaderboard.render(texte_dex, True, couleur)
+            screen.blit(surface_dex, (positions_x[3], y))
+
+            # Capturés
+            surface_cap ← self.font_leaderboard.render(
+                str(entry.get("pokemon_count", 0)), True, couleur)
+            screen.blit(surface_cap, (positions_x[4], y))
+
+
+    # -----------------------------------------------------------------
+    # RENDU : CHOIX (Continuer / Menu principal)
+    # -----------------------------------------------------------------
+
+    MÉTHODE _draw_choix(self, screen):
+        choix_y ← SCREEN_HEIGHT - 65
+
+        options ← ["Continuer l'aventure", "Menu principal"]
+
+        # Centrer les deux options
+        total_largeur ← 450
+        debut_x ← (SCREEN_WIDTH - total_largeur) / 2
+
+        POUR i, option DANS enumerate(options):
+            SI i == self.choix_index:
+                couleur ← (255, 255, 255)
+                prefixe ← "> "
+                # Fond de sélection
+                opt_x ← debut_x + i × 280
+                fond_rect ← pygame.Rect(opt_x - 10, choix_y - 5, 260, 35)
+                pygame.draw.rect(screen, (50, 50, 80), fond_rect)
+                pygame.draw.rect(screen, (255, 220, 50), fond_rect, 2)
+            SINON:
+                couleur ← (140, 140, 160)
+                prefixe ← "  "
+
+            surface ← self.font_choix.render(prefixe + option, True, couleur)
+            opt_x ← debut_x + i × 280
+            screen.blit(surface, (opt_x, choix_y))
+
+        # Indication
+        surface_hint ← self.font_info.render(
+            "[←→] Choisir  [Entrée] Valider", True, (90, 90, 110))
+        hint_x ← (SCREEN_WIDTH - surface_hint.get_width()) / 2
+        screen.blit(surface_hint, (hint_x, SCREEN_HEIGHT - 25))
+
+
+    # -----------------------------------------------------------------
+    # RENDU : CONFIRMATION MENU PRINCIPAL
+    # -----------------------------------------------------------------
+
+    MÉTHODE _draw_confirmation(self, screen):
+        # Overlay
+        overlay ← pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+        overlay.fill((0, 0, 0))
+        overlay.set_alpha(150)
+        screen.blit(overlay, (0, 0))
+
+        # Cadre
+        cadre_largeur ← 500
+        cadre_hauteur ← 140
+        cadre_x ← (SCREEN_WIDTH - cadre_largeur) / 2
+        cadre_y ← (SCREEN_HEIGHT - cadre_hauteur) / 2
+
+        fond ← pygame.Surface((cadre_largeur, cadre_hauteur))
+        fond.fill((35, 30, 55))
+        screen.blit(fond, (cadre_x, cadre_y))
+        pygame.draw.rect(screen, (255, 150, 100),
+            (cadre_x, cadre_y, cadre_largeur, cadre_hauteur), 3)
+
+        # Question
+        surface_q ← self.font_confirm.render(
+            "Retour au menu principal ?", True, (255, 255, 255))
+        q_x ← cadre_x + (cadre_largeur - surface_q.get_width()) / 2
+        screen.blit(surface_q, (q_x, cadre_y + 18))
+
+        # Avertissement
+        surface_warn ← self.font_info.render(
+            "La progression non sauvegardée sera perdue.", True, (255, 180, 130))
+        w_x ← cadre_x + (cadre_largeur - surface_warn.get_width()) / 2
+        screen.blit(surface_warn, (w_x, cadre_y + 50))
+
+        # Oui / Non
+        options_confirm ← ["Oui", "Non"]
+        POUR i, option DANS enumerate(options_confirm):
+            SI i == self.confirm_index:
+                couleur ← (255, 220, 50)
+                prefixe ← "> "
+            SINON:
+                couleur ← (180, 180, 180)
+                prefixe ← "  "
+
+            surface_opt ← self.font_confirm.render(prefixe + option, True, couleur)
+            opt_x ← cadre_x + 150 + i × 160
+            screen.blit(surface_opt, (opt_x, cadre_y + 90))
