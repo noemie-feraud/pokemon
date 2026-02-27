@@ -1,0 +1,262 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+#
+# Pas d'imports lourds. Juste les types de base.
+# Les constantes (CREDITS_VICTOIRE_B1, COUT_ENTREE_TOURNOI) sont dans settings,
+# mais le CreditsManager ne les utilise pas directement — c'est le code
+# appelant qui décide combien ajouter/retirer.
+
+# Note : On pourrait importer settings pour le formatage (séparateur de milliers),
+# mais on garde simple pour l'instant.
+
+
+# =============================================================================
+# CLASSE CREDITS MANAGER
+# =============================================================================
+#
+# Gère la monnaie du joueur. Centralise toutes les opérations sur les crédits
+# pour éviter d'avoir des "player.credits += 50" dispersés partout.
+
+CLASSE CreditsManager:
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+    #
+    # balance : le solde initial (0 en début de partie, valeur chargée
+    #           depuis la sauvegarde sinon)
+    #
+    # On pourrait ajouter un historique des transactions ici,
+    # mais on garde simple pour le MVP.
+
+    MÉTHODE __init__(self, balance=0):
+        self.balance ← balance
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_balance
+    # -----------------------------------------------------------------
+    #
+    # Renvoie le solde actuel.
+    # Utilisé par l'UI (HUD, boutique, menu pause) pour afficher
+    # les crédits du joueur.
+
+    MÉTHODE get_balance(self):
+        RETOURNER self.balance
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : add
+    # -----------------------------------------------------------------
+    #
+    # Ajoute des crédits au solde.
+    #
+    # amount : le nombre de crédits à ajouter (doit être positif)
+    # source : optionnel, pour debug/historique (ex: "victoire_dresseur")
+    #
+    # Renvoie le nouveau solde.
+    #
+    # Utilisé par :
+    #   - trainer.py : après victoire contre un dresseur
+    #   - quest.py : après complétion d'un défi
+    #   - eventuellement des événements de map (objets trouvés)
+
+    MÉTHODE add(self, amount, source=None):
+        SI amount < 0:
+            afficher warning ("Tentative d'ajout de crédits négatifs: " + str(amount))
+            amount ← abs(amount)    # on transforme en positif par sécurité
+
+        self.balance ← self.balance + amount
+
+        # Optionnel : enregistrer dans l'historique
+        SI source EST NOT None:
+            self._log_transaction("add", amount, source)
+
+        RETOURNER self.balance
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : remove
+    # -----------------------------------------------------------------
+    #
+    # Retire des crédits du solde.
+    #
+    # amount : le nombre de crédits à retirer
+    # source : optionnel, pour debug
+    #
+    # Renvoie True si le retrait a réussi, False sinon.
+    # Le retrait échoue si le solde est insuffisant.
+    #
+    # Utilisé par :
+    #   - shop.py : quand le joueur achète un objet
+    #   - tournament.py : pour l'inscription (150 crédits)
+
+    MÉTHODE remove(self, amount, source=None):
+        SI amount < 0:
+            afficher warning ("Tentative de retrait de crédits négatifs: " + str(amount))
+            amount ← abs(amount)
+
+        SI NOT self.can_afford(amount):
+            RETOURNER False
+
+        self.balance ← self.balance - amount
+
+        SI source EST NOT None:
+            self._log_transaction("remove", amount, source)
+
+        RETOURNER True
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : can_afford
+    # -----------------------------------------------------------------
+    #
+    # Vérifie si le joueur a assez de crédits pour un achat/inscription.
+    #
+    # amount : le montant à vérifier
+    #
+    # Renvoie True si le solde est >= amount, False sinon.
+    #
+    # Utilisé par :
+    #   - shop.py : pour griser les objets trop chers
+    #   - tournament.py : pour vérifier avant d'inscrire
+
+    MÉTHODE can_afford(self, amount):
+        RETOURNER self.balance >= amount
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : transfer_to
+    # -----------------------------------------------------------------
+    #
+    # Transfère des crédits à un autre CreditsManager.
+    # (pas utilisé pour l'instant, mais peut servir pour des échanges
+    #  entre joueurs ou des mécaniques futures)
+    #
+    # target : un autre CreditsManager
+    # amount : le montant à transférer
+    #
+    # Renvoie True si le transfert a réussi, False sinon.
+
+    MÉTHODE transfer_to(self, target, amount):
+        SI NOT self.can_afford(amount):
+            RETOURNER False
+
+        self.remove(amount, source="transfer_out")
+        target.add(amount, source="transfer_in")
+        RETOURNER True
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : format_balance
+    # -----------------------------------------------------------------
+    #
+    # Formate le solde pour l'affichage.
+    #
+    # Exemples :
+    #   150 → "150"
+    #   1250 → "1 250"
+    #   1000000 → "1 000 000"
+    #
+    # Utilisé par le HUD et les interfaces (boutique, menu pause).
+
+    MÉTHODE format_balance(self):
+        # Version simple : avec espaces tous les 3 chiffres
+        balance_str ← str(self.balance)
+        resultat ← ""
+        longueur ← len(balance_str)
+
+        POUR i, chiffre DANS enumerate(balance_str):
+            resultat ← resultat + chiffre
+            # Ajouter un espace tous les 3 chiffres en partant de la fin
+            position_depuis_fin ← longueur - i - 1
+            SI position_depuis_fin > 0 ET position_depuis_fin % 3 == 0:
+                resultat ← resultat + " "
+
+        RETOURNER resultat
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _log_transaction
+    # -----------------------------------------------------------------
+    #
+    # Enregistre une transaction dans l'historique (optionnel).
+    # Pour l'instant, juste un print de debug.
+    # Plus tard, on pourrait stocker dans un fichier ou dans la sauvegarde.
+
+    MÉTHODE _log_transaction(self, type_transaction, amount, source):
+        # Mode debug uniquement
+        SI True:    # à remplacer par un flag DEBUG dans settings
+            afficher "[Credits] {} {} crédits - Source: {} - Nouveau solde: {}".format(
+                type_transaction, amount, source, self.balance
+            )
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : reset
+    # -----------------------------------------------------------------
+    #
+    # Remet les crédits à zéro.
+    # Utilisé pour les nouvelles parties.
+
+    MÉTHODE reset(self):
+        self.balance ← 0
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : to_dict
+    # -----------------------------------------------------------------
+    #
+    # Convertit le gestionnaire en dictionnaire pour la sauvegarde.
+    #
+    # Format : {"balance": 150}
+
+    MÉTHODE to_dict(self):
+        RETOURNER {
+            "balance": self.balance
+        }
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE DE CLASSE : from_dict
+    # -----------------------------------------------------------------
+    #
+    # Recrée un CreditsManager à partir d'un dictionnaire de sauvegarde.
+
+    MÉTHODE DE CLASSE from_dict(cls, data):
+        balance ← data.get("balance", 0)
+        RETOURNER cls(balance)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODES SPÉCIALES
+    # -----------------------------------------------------------------
+
+    MÉTHODE __str__(self):
+        RETOURNER "CreditsManager: {} crédits".format(self.balance)
+
+    MÉTHODE __repr__(self):
+        RETOURNER self.__str__()
+
+
+# =============================================================================
+# EXEMPLES D'UTILISATION
+# =============================================================================
+#
+# Dans player.py :
+#   self.credits_manager ← CreditsManager()
+#
+# Dans trainer.py (après victoire) :
+#   player.credits_manager.add(CREDITS_VICTOIRE_B2, source="victoire_dresseur")
+#
+# Dans shop.py (achat) :
+#   SI player.credits_manager.can_afford(item.prix):
+#       player.credits_manager.remove(item.prix, source="achat_" + item.nom)
+#
+# Dans tournament.py (inscription) :
+#   SI player.credits_manager.can_afford(COUT_ENTREE_TOURNOI):
+#       player.credits_manager.remove(COUT_ENTREE_TOURNOI, source="inscription_tournoi")
+#
+# Dans le HUD :
+#   texte_credits ← player.credits_manager.format_balance()
