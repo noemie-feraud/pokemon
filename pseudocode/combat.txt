@@ -2,22 +2,34 @@
 # IMPORTS
 # =============================================================================
 #
-# random : pour l'ordre d'action et l'IA adverse
+# random : pour l'ordre d'action
 # damage_calculator : pour le calcul des dégâts et de l'XP
 # capture_system : pour les tentatives de capture
+# type_chart : pour les multiplicateurs de type (utilisé par l'IA)
 
 importer random
 importer calculer_degats, calculer_xp_gagnee depuis combat.damage_calculator
 importer tenter_capture depuis combat.capture_system
+importer obtenir_multiplicateur depuis config.type_chart
+
+
+# =============================================================================
+# CONSTANTES (pourraient venir de settings.py)
+# =============================================================================
+
+SEUIL_PV_SWITCH ← 0.3      # 30% de PV restants → déclenche un switch
+SEUIL_MULTI_SWITCH ← 0.5    # Multiplicateur < 0.5 → désavantage critique
 
 
 # =============================================================================
 # CLASSE COMBAT
 # =============================================================================
 #
-# Moteur de combat au tour par tour.
+# Moteur de combat au tour par tour avec IA améliorée.
 # Gère la logique d'un combat complet du début à la fin.
 # Pas d'affichage ici — que de la logique.
+#
+# Conforme aux exigences du sujet et avec IA tactique.
 
 CLASSE Combat:
 
@@ -30,31 +42,17 @@ CLASSE Combat:
     # team_adverse : objet Team de l'adversaire (dresseur ou sauvage)
     # type_combat : "wild" ou "trainer"
     # trainer_name : nom du dresseur adverse (None si combat sauvage)
-    #
-    # Le combat commence avec le premier Pokémon valide de chaque équipe
-    # sur le terrain.
-    #
-    # tour_actuel : compteur de tours pour le debug et les stats.
-    #
-    # boosts : les bonus temporaires de stats pour chaque camp.
-    #   Réinitialisés quand le Pokémon actif change.
-    #
-    # combat_termine : flag pour savoir si le combat est fini.
-    #   Quand c'est True, state_combat.py sait qu'il doit se pop.
-    #
-    # resultat_combat : "victoire", "defaite", "capture", "fuite", ou None.
-    #
-    # derniere_action : stocke le résultat de la dernière action pour
-    #   que state_combat.py puisse l'afficher.
+    # trainer_level : niveau du dresseur (B1, B2, B3) pour ajuster l'IA
 
     MÉTHODE __init__(self, game_manager, team_joueur, team_adverse,
-                     type_combat="wild", trainer_name=None):
+                     type_combat="wild", trainer_name=None, trainer_level=None):
 
         self.game_manager ← game_manager
         self.team_joueur ← team_joueur
         self.team_adverse ← team_adverse
         self.type_combat ← type_combat
         self.trainer_name ← trainer_name
+        self.trainer_level ← trainer_level
 
         # Pokémon actuellement sur le terrain
         self.pokemon_joueur ← team_joueur.get_premier_valide()
@@ -70,10 +68,10 @@ CLASSE Combat:
         # État du combat
         self.combat_termine ← False
         self.resultat_combat ← None
+        self.vainqueur ← None
+        self.perdant ← None
 
         # File d'événements du tour
-        # Chaque action produit une liste d'événements que state_combat.py
-        # consomme un par un pour l'affichage séquentiel.
         self.evenements ← liste vide
 
 
@@ -84,27 +82,6 @@ CLASSE Combat:
     # Exécute un tour complet de combat.
     # Reçoit l'action du joueur, détermine l'action de l'IA,
     # résout les deux actions dans le bon ordre, vérifie les KO.
-    #
-    # action_joueur : dictionnaire décrivant ce que le joueur fait :
-    #   {"type": "attack", "attaque": {...}}
-    #   {"type": "item", "item": objet Item, "cible": objet Pokemon}
-    #   {"type": "switch", "index": int}
-    #   {"type": "flee"}
-    #   {"type": "capture", "ball": objet Item}
-    #
-    # Renvoie une liste d'événements dans l'ordre chronologique.
-    # Chaque événement est un dictionnaire :
-    #   {"type": "attaque", "attaquant": ..., "defenseur": ..., "resultat": ...}
-    #   {"type": "ko", "pokemon": ...}
-    #   {"type": "switch", "ancien": ..., "nouveau": ...}
-    #   {"type": "item_utilise", "item": ..., "cible": ...}
-    #   {"type": "capture", "resultat": ...}
-    #   {"type": "fuite"}
-    #   {"type": "fin_combat", "resultat": ...}
-    #   {"type": "xp", "pokemon": ..., "xp_gagnee": ..., "resultat_xp": ...}
-    #
-    # state_combat.py parcourt ces événements et les affiche un par un
-    # avec les animations et messages correspondants.
 
     MÉTHODE executer_tour(self, action_joueur):
         self.evenements ← liste vide
@@ -118,18 +95,14 @@ CLASSE Combat:
         SI action_joueur["type"] == "capture":
             RETOURNER self._gerer_capture(action_joueur["ball"])
 
-        # --- DÉTERMINER L'ACTION DE L'IA ---
+        # --- DÉTERMINER L'ACTION DE L'IA (améliorée) ---
         action_adverse ← self._choisir_action_ia()
 
         # --- DÉTERMINER L'ORDRE ---
-        # Les objets et switches passent toujours en premier.
-        # Sinon, ordre aléatoire.
         actions_ordonnees ← self._determiner_ordre(action_joueur, action_adverse)
 
         # --- EXÉCUTER LES ACTIONS DANS L'ORDRE ---
         POUR CHAQUE (action, camp) DANS actions_ordonnees:
-            # Vérifier que le combattant est encore en vie
-            # (il a pu être KO par l'action précédente)
             SI camp == "joueur" ET self.pokemon_joueur.est_ko:
                 CONTINUER
             SI camp == "adverse" ET self.pokemon_adverse.est_ko:
@@ -137,9 +110,7 @@ CLASSE Combat:
 
             self._executer_action(action, camp)
 
-            # Vérifier les KO après chaque action
             SI self._verifier_ko():
-                # Le combat est terminé ou un remplacement est nécessaire
                 SORTIR DE LA BOUCLE
 
         RETOURNER self.evenements
@@ -149,25 +120,168 @@ CLASSE Combat:
     # MÉTHODE PRIVÉE : _choisir_action_ia
     # -----------------------------------------------------------------
     #
-    # L'IA choisit une action pour le Pokémon adverse.
-    # Pour l'instant : attaque aléatoire parmi les attaques disponibles.
-    #
-    # Si on veut une IA plus intelligente plus tard, c'est ici qu'on
-    # la met. On pourrait analyser les types et choisir l'attaque la
-    # plus efficace. Mais pour le MVP, l'aléatoire suffit.
+    # IA améliorée : décide tactiquement de l'action adverse.
+    # - Combat sauvage : toujours attaquer
+    # - Combat dresseur : peut switcher si avantageux
+    # - Choisit la meilleure attaque en fonction des types
 
     MÉTHODE _choisir_action_ia(self):
-        attaques ← self.pokemon_adverse.attaques
+        # Cas spécial : combat sauvage → toujours attaquer
+        SI self.type_combat == "wild":
+            meilleure_attaque ← self._trouver_meilleure_attaque(self.pokemon_adverse, self.pokemon_joueur)
+            RETOURNER {"type": "attack", "attaque": meilleure_attaque}
 
-        SI attaques EST vide:
-            # Cas de sécurité : pas d'attaque → "Lutte" (attaque de base)
-            RETOURNER {
-                "type": "attack",
-                "attaque": {"name": "Lutte", "type": "normal", "power": 30}
-            }
+        # Combat dresseur : logique tactique
+        # 1. Vérifier s'il faut switcher
+        SI self._devrait_switcher():
+            meilleur_switch ← self._trouver_meilleur_switch()
+            SI meilleur_switch EST NOT None:
+                index ← self.team_adverse.get_index(meilleur_switch)
+                RETOURNER {"type": "switch", "index": index}
 
-        attaque_choisie ← random.choice(attaques)
-        RETOURNER {"type": "attack", "attaque": attaque_choisie}
+        # 2. Sinon, attaquer avec la meilleure attaque
+        meilleure_attaque ← self._trouver_meilleure_attaque(self.pokemon_adverse, self.pokemon_joueur)
+        RETOURNER {"type": "attack", "attaque": meilleure_attaque}
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _trouver_meilleure_attaque
+    # -----------------------------------------------------------------
+    #
+    # Trouve l'attaque la plus efficace d'un Pokémon contre une cible.
+    #
+    # attaquant : le Pokémon qui attaque
+    # cible : le Pokémon cible
+    #
+    # Renvoie l'attaque avec le meilleur multiplicateur de type.
+
+    MÉTHODE _trouver_meilleure_attaque(self, attaquant, cible):
+        attaques ← attaquant.attaques
+
+        SI len(attaques) == 0:
+            RETOURNER {"name": "Lutte", "type": "normal", "power": 30}
+
+        meilleure_attaque ← attaques[0]
+        meilleur_multiplicateur ← 0
+
+        POUR CHAQUE attaque DANS attaques:
+            multiplicateur ← 1.0
+
+            # Calculer l'efficacité contre chaque type de la cible
+            POUR CHAQUE type_cible DANS cible.types:
+                mult ← obtenir_multiplicateur(attaque["type"], type_cible)
+                multiplicateur ← multiplicateur × mult
+
+            # Si c'est mieux que la meilleure trouvée
+            SI multiplicateur > meilleur_multiplicateur:
+                meilleur_multiplicateur ← multiplicateur
+                meilleure_attaque ← attaque
+
+        RETOURNER meilleure_attaque
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _devrait_switcher
+    # -----------------------------------------------------------------
+    #
+    # Détermine si le dresseur adverse devrait changer de Pokémon.
+    #
+    # Critères :
+    #   1. Pokémon actuel en danger (PV < SEUIL_PV_SWITCH)
+    #   2. Pokémon actuel très désavantagé (multiplicateur < SEUIL_MULTI_SWITCH)
+    #   3. Il reste des Pokémon valides dans l'équipe
+    #
+    # Renvoie True si un switch est recommandé.
+
+    MÉTHODE _devrait_switcher(self):
+        # Si c'est un combat sauvage, pas de switch
+        SI self.type_combat == "wild":
+            RETOURNER False
+
+        # Si le dresseur n'a qu'un seul Pokémon valide
+        SI self.team_adverse.nombre_valides() <= 1:
+            RETOURNER False
+
+        # Critère 1 : PV bas
+        SI self.pokemon_adverse.get_pourcentage_pv() < SEUIL_PV_SWITCH:
+            RETOURNER True
+
+        # Critère 2 : désavantage de type
+        multiplicateur_defense ← self._calculer_multiplicateur_defense()
+        SI multiplicateur_defense < SEUIL_MULTI_SWITCH:
+            RETOURNER True
+
+        RETOURNER False
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _calculer_multiplicateur_defense
+    # -----------------------------------------------------------------
+    #
+    # Calcule le multiplicateur moyen que subirait le Pokémon adverse
+    # si le joueur attaquait avec son type le plus efficace.
+    #
+    # Utile pour savoir si le Pokémon est en danger.
+
+    MÉTHODE _calculer_multiplicateur_defense(self):
+        # On prend le pire scénario : l'attaque la plus efficace du joueur
+        meilleure_attaque_joueur ← self._trouver_meilleure_attaque(
+            self.pokemon_joueur, self.pokemon_adverse
+        )
+
+        multiplicateur ← 1.0
+        POUR CHAQUE type_defense DANS self.pokemon_adverse.types:
+            mult ← obtenir_multiplicateur(meilleure_attaque_joueur["type"], type_defense)
+            multiplicateur ← multiplicateur × mult
+
+        RETOURNER multiplicateur
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _trouver_meilleur_switch
+    # -----------------------------------------------------------------
+    #
+    # Choisit le meilleur Pokémon de remplacement dans l'équipe adverse.
+    #
+    # Le "meilleur" est celui qui a le meilleur avantage de type
+    # contre le Pokémon du joueur.
+
+    MÉTHODE _trouver_meilleur_switch(self):
+        meilleur_pokemon ← None
+        meilleur_score ← -1
+
+        POUR CHAQUE pokemon DANS self.team_adverse.get_valides():
+            # Ne pas se re-switcher sur le même Pokémon
+            SI pokemon == self.pokemon_adverse:
+                CONTINUER
+
+            # Calculer l'avantage de ce Pokémon contre le joueur
+            score ← self._calculer_avantage_type(pokemon, self.pokemon_joueur)
+
+            SI score > meilleur_score:
+                meilleur_score ← score
+                meilleur_pokemon ← pokemon
+
+        RETOURNER meilleur_pokemon
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _calculer_avantage_type
+    # -----------------------------------------------------------------
+    #
+    # Calcule l'avantage moyen du Pokémon A contre le Pokémon B.
+    # Plus le score est élevé, plus A est efficace contre B.
+
+    MÉTHODE _calculer_avantage_type(self, pokemon_a, pokemon_b):
+        # On prend la meilleure attaque de A contre B
+        meilleure_attaque ← self._trouver_meilleure_attaque(pokemon_a, pokemon_b)
+
+        multiplicateur ← 1.0
+        POUR CHAQUE type_b DANS pokemon_b.types:
+            mult ← obtenir_multiplicateur(meilleure_attaque["type"], type_b)
+            multiplicateur ← multiplicateur × mult
+
+        RETOURNER multiplicateur
 
 
     # -----------------------------------------------------------------
@@ -180,26 +294,20 @@ CLASSE Combat:
     #   1. Les objets et switches passent TOUJOURS en premier
     #   2. Si les deux sont des attaques → ordre aléatoire (50/50)
     #   3. Si les deux sont des objets/switches → le joueur d'abord
-    #
-    # Renvoie une liste de tuples (action, camp) dans l'ordre.
 
     MÉTHODE _determiner_ordre(self, action_joueur, action_adverse):
         priorite_joueur ← action_joueur["type"] DANS ["item", "switch"]
         priorite_adverse ← action_adverse["type"] DANS ["item", "switch"]
 
-        # Les deux sont prioritaires → joueur d'abord
         SI priorite_joueur ET priorite_adverse:
             RETOURNER [(action_joueur, "joueur"), (action_adverse, "adverse")]
 
-        # Seul le joueur est prioritaire
         SI priorite_joueur:
             RETOURNER [(action_joueur, "joueur"), (action_adverse, "adverse")]
 
-        # Seul l'adversaire est prioritaire
         SI priorite_adverse:
             RETOURNER [(action_adverse, "adverse"), (action_joueur, "joueur")]
 
-        # Les deux attaquent → aléatoire
         SI random.random() < 0.5:
             RETOURNER [(action_joueur, "joueur"), (action_adverse, "adverse")]
         SINON:
@@ -211,10 +319,6 @@ CLASSE Combat:
     # -----------------------------------------------------------------
     #
     # Exécute une seule action (attaque, objet ou switch).
-    # Ajoute les événements correspondants à self.evenements.
-    #
-    # action : le dictionnaire de l'action
-    # camp : "joueur" ou "adverse"
 
     MÉTHODE _executer_action(self, action, camp):
         SI action["type"] == "attack":
@@ -232,11 +336,6 @@ CLASSE Combat:
     # -----------------------------------------------------------------
     #
     # Résout une attaque.
-    #
-    # 1. Identifier l'attaquant et le défenseur
-    # 2. Appeler damage_calculator pour obtenir les dégâts
-    # 3. Appliquer les dégâts au défenseur
-    # 4. Ajouter les événements
 
     MÉTHODE _executer_attaque(self, action, camp):
         SI camp == "joueur":
@@ -251,21 +350,16 @@ CLASSE Combat:
             boosts_def ← self.boosts_joueur
 
         attaque ← action["attaque"]
-
-        # Récupérer le cycle jour/nuit (peut être None)
         day_night ← self.game_manager.day_night_cycle
 
-        # Calculer les dégâts
         resultat ← calculer_degats(
             attaquant, defenseur, attaque, day_night,
             boosts_att, boosts_def
         )
 
-        # Appliquer les dégâts
         SI resultat["a_touche"] ET NOT resultat["est_immune"]:
             defenseur.subir_degats(resultat["degats"])
 
-        # Ajouter l'événement
         ajouter {
             "type": "attaque",
             "camp": camp,
@@ -280,14 +374,7 @@ CLASSE Combat:
     # MÉTHODE PRIVÉE : _executer_objet
     # -----------------------------------------------------------------
     #
-    # Résout l'utilisation d'un objet par le joueur.
-    # L'IA n'utilise pas d'objets (simplification).
-    #
-    # Les types d'objets :
-    #   - Soin → restaure des PV à la cible
-    #   - Boost → augmente une stat temporairement
-    #   - Rappel → réanime un Pokémon KO
-    #   - Anti-statut → retire un statut
+    # Résout l'utilisation d'un objet.
 
     MÉTHODE _executer_objet(self, action, camp):
         item ← action["item"]
@@ -295,60 +382,32 @@ CLASSE Combat:
 
         SI item.est_soin:
             cible.soigner(item.effect_value)
-            ajouter {
-                "type": "item_utilise",
-                "camp": camp,
-                "item": item,
-                "cible": cible,
-                "effet": "soin",
-                "valeur": item.effect_value
-            } à self.evenements
+            ajouter {"type": "item_utilise", "camp": camp, "item": item,
+                     "cible": cible, "effet": "soin", "valeur": item.effect_value} à self.evenements
 
         SINON SI item.est_boost:
-            # Appliquer le boost au camp du joueur
-            stat ← item.target_stat    # "attack" ou "defense"
+            stat ← item.target_stat
             self.boosts_joueur[stat] ← self.boosts_joueur[stat] + item.effect_value
-
-            ajouter {
-                "type": "item_utilise",
-                "camp": camp,
-                "item": item,
-                "cible": self.pokemon_joueur,
-                "effet": "boost",
-                "stat": stat,
-                "valeur": item.effect_value
-            } à self.evenements
+            ajouter {"type": "item_utilise", "camp": camp, "item": item,
+                     "cible": self.pokemon_joueur, "effet": "boost",
+                     "stat": stat, "valeur": item.effect_value} à self.evenements
 
         SINON SI item.est_rappel:
             cible.ranimer(item.effect_value / 100)
-            ajouter {
-                "type": "item_utilise",
-                "camp": camp,
-                "item": item,
-                "cible": cible,
-                "effet": "rappel",
-                "valeur": item.effect_value
-            } à self.evenements
+            ajouter {"type": "item_utilise", "camp": camp, "item": item,
+                     "cible": cible, "effet": "rappel", "valeur": item.effect_value} à self.evenements
 
         SINON SI item.est_anti_statut:
             cible.soigner_statut()
-            ajouter {
-                "type": "item_utilise",
-                "camp": camp,
-                "item": item,
-                "cible": cible,
-                "effet": "anti_statut"
-            } à self.evenements
+            ajouter {"type": "item_utilise", "camp": camp, "item": item,
+                     "cible": cible, "effet": "anti_statut"} à self.evenements
 
 
     # -----------------------------------------------------------------
     # MÉTHODE PRIVÉE : _executer_switch
     # -----------------------------------------------------------------
     #
-    # Change le Pokémon actif du joueur.
-    # Réinitialise les boosts (comme dans les vrais Pokémon).
-    #
-    # action["index"] : l'index du Pokémon à envoyer dans l'équipe.
+    # Change le Pokémon actif.
 
     MÉTHODE _executer_switch(self, action, camp):
         SI camp == "joueur":
@@ -358,16 +417,9 @@ CLASSE Combat:
 
             SI nouveau EST NOT None ET NOT nouveau.est_ko:
                 self.pokemon_joueur ← nouveau
-
-                # Réinitialiser les boosts
                 self.boosts_joueur ← {"attack": 0, "defense": 0}
-
-                ajouter {
-                    "type": "switch",
-                    "camp": camp,
-                    "ancien": ancien,
-                    "nouveau": nouveau
-                } à self.evenements
+                ajouter {"type": "switch", "camp": camp, "ancien": ancien,
+                         "nouveau": nouveau} à self.evenements
 
 
     # -----------------------------------------------------------------
@@ -375,27 +427,16 @@ CLASSE Combat:
     # -----------------------------------------------------------------
     #
     # Gère la fuite du joueur.
-    # Possible uniquement en combat sauvage.
-    # Toujours réussie (pas de probabilité d'échec).
-    #
-    # Renvoie les événements.
 
     MÉTHODE _gerer_fuite(self):
         SI self.type_combat != "wild":
-            ajouter {
-                "type": "fuite_impossible",
-                "message": "Impossible de fuir un combat de dresseur !"
-            } à self.evenements
+            ajouter {"type": "fuite_impossible",
+                     "message": "Impossible de fuir un combat de dresseur !"} à self.evenements
             RETOURNER self.evenements
 
         self.combat_termine ← True
         self.resultat_combat ← "fuite"
-
-        ajouter {
-            "type": "fuite",
-            "message": "Vous avez pris la fuite !"
-        } à self.evenements
-
+        ajouter {"type": "fuite", "message": "Vous avez pris la fuite !"} à self.evenements
         RETOURNER self.evenements
 
 
@@ -404,9 +445,6 @@ CLASSE Combat:
     # -----------------------------------------------------------------
     #
     # Gère une tentative de capture.
-    # Appelle capture_system.tenter_capture().
-    #
-    # ball : l'objet Item (la Pokéball choisie)
 
     MÉTHODE _gerer_capture(self, ball):
         resultat ← tenter_capture(
@@ -415,19 +453,13 @@ CLASSE Combat:
             self.type_combat
         )
 
-        ajouter {
-            "type": "capture",
-            "resultat": resultat,
-            "ball": ball
-        } à self.evenements
+        ajouter {"type": "capture", "resultat": resultat, "ball": ball} à self.evenements
 
         SI resultat["capture_reussie"]:
             self.combat_termine ← True
             self.resultat_combat ← "capture"
-        # Si capture ratée, le tour continue avec l'attaque de l'adversaire
         SINON:
             SI resultat["raison_echec"] == "miss":
-                # L'adversaire attaque après la capture ratée
                 action_adverse ← self._choisir_action_ia()
                 self._executer_action(action_adverse, "adverse")
                 self._verifier_ko()
@@ -439,61 +471,33 @@ CLASSE Combat:
     # MÉTHODE PRIVÉE : _verifier_ko
     # -----------------------------------------------------------------
     #
-    # Vérifie si un Pokémon est KO après une action.
-    # Gère les conséquences : remplacement ou fin de combat.
-    #
-    # Renvoie True si le combat est terminé ou si un remplacement
-    # est nécessaire, False si le combat continue normalement.
+    # Vérifie si un Pokémon est KO et gère les conséquences.
 
     MÉTHODE _verifier_ko(self):
         # --- Pokémon adverse KO ---
         SI self.pokemon_adverse.est_ko:
-            ajouter {
-                "type": "ko",
-                "camp": "adverse",
-                "pokemon": self.pokemon_adverse
-            } à self.evenements
-
-            # Donner l'XP au Pokémon du joueur
+            ajouter {"type": "ko", "camp": "adverse", "pokemon": self.pokemon_adverse} à self.evenements
             self._donner_xp()
 
-            # Vérifier s'il reste des Pokémon adverses
             SI self.team_adverse.a_pokemon_valide:
-                # Envoyer le suivant
                 suivant ← self.team_adverse.get_premier_valide()
                 ancien ← self.pokemon_adverse
                 self.pokemon_adverse ← suivant
                 self.boosts_adverse ← {"attack": 0, "defense": 0}
-
-                ajouter {
-                    "type": "switch",
-                    "camp": "adverse",
-                    "ancien": ancien,
-                    "nouveau": suivant
-                } à self.evenements
+                ajouter {"type": "switch", "camp": "adverse", "ancien": ancien,
+                         "nouveau": suivant} à self.evenements
             SINON:
-                # Plus de Pokémon adverses → victoire !
                 self._terminer_combat("victoire")
                 RETOURNER True
 
         # --- Pokémon du joueur KO ---
         SI self.pokemon_joueur.est_ko:
-            ajouter {
-                "type": "ko",
-                "camp": "joueur",
-                "pokemon": self.pokemon_joueur
-            } à self.evenements
+            ajouter {"type": "ko", "camp": "joueur", "pokemon": self.pokemon_joueur} à self.evenements
 
             SI self.team_joueur.a_pokemon_valide:
-                # Le joueur doit choisir un remplaçant
-                # On signale à state_combat.py qu'il faut un choix
-                ajouter {
-                    "type": "choix_remplacement",
-                    "camp": "joueur"
-                } à self.evenements
+                ajouter {"type": "choix_remplacement", "camp": "joueur"} à self.evenements
                 RETOURNER True
             SINON:
-                # Plus de Pokémon → défaite
                 self._terminer_combat("defaite")
                 RETOURNER True
 
@@ -504,12 +508,7 @@ CLASSE Combat:
     # MÉTHODE : remplacer_pokemon_joueur
     # -----------------------------------------------------------------
     #
-    # Appelée par state_combat.py quand le joueur a choisi un
-    # remplaçant après un KO.
-    #
-    # index : l'index du Pokémon choisi dans l'équipe.
-    #
-    # Renvoie l'événement de switch pour l'affichage.
+    # Appelée par state_combat.py quand le joueur a choisi un remplaçant.
 
     MÉTHODE remplacer_pokemon_joueur(self, index):
         ancien ← self.pokemon_joueur
@@ -521,13 +520,7 @@ CLASSE Combat:
         self.pokemon_joueur ← nouveau
         self.boosts_joueur ← {"attack": 0, "defense": 0}
 
-        evenement ← {
-            "type": "switch",
-            "camp": "joueur",
-            "ancien": ancien,
-            "nouveau": nouveau
-        }
-
+        evenement ← {"type": "switch", "camp": "joueur", "ancien": ancien, "nouveau": nouveau}
         RETOURNER evenement
 
 
@@ -536,75 +529,51 @@ CLASSE Combat:
     # -----------------------------------------------------------------
     #
     # Donne l'XP au Pokémon du joueur qui a porté le coup final.
-    # Appelée quand un Pokémon adverse est mis KO.
-    #
-    # L'XP est donnée uniquement au Pokémon actif du joueur
-    # (celui qui a combattu). Pas de partage d'XP.
-    #
-    # On appelle pokemon.gagner_xp() qui gère le level up en interne
-    # et renvoie les infos (nombre de niveaux gagnés, possibilité
-    # d'évolution).
-    #
-    # On ajoute les événements d'XP et de level up pour l'affichage.
 
     MÉTHODE _donner_xp(self):
         SI self.pokemon_joueur.est_ko:
-            RETOURNER    # un Pokémon KO gagne pas d'XP
+            RETOURNER
 
         xp ← calculer_xp_gagnee(self.pokemon_adverse)
         resultat_xp ← self.pokemon_joueur.gagner_xp(xp)
 
-        ajouter {
-            "type": "xp",
-            "pokemon": self.pokemon_joueur,
-            "xp_gagnee": xp,
-            "resultat": resultat_xp
-        } à self.evenements
+        ajouter {"type": "xp", "pokemon": self.pokemon_joueur,
+                 "xp_gagnee": xp, "resultat": resultat_xp} à self.evenements
 
-        # Si level up → événement supplémentaire
         SI resultat_xp["level_ups"] > 0:
-            ajouter {
-                "type": "level_up",
-                "pokemon": self.pokemon_joueur,
-                "ancien_niveau": resultat_xp["ancien_niveau"],
-                "nouveau_niveau": resultat_xp["nouveau_niveau"]
-            } à self.evenements
+            ajouter {"type": "level_up", "pokemon": self.pokemon_joueur,
+                     "ancien_niveau": resultat_xp["ancien_niveau"],
+                     "nouveau_niveau": resultat_xp["nouveau_niveau"]} à self.evenements
 
-        # Si évolution possible → événement supplémentaire
         SI resultat_xp["evolution"]:
-            ajouter {
-                "type": "evolution_possible",
-                "pokemon": self.pokemon_joueur
-            } à self.evenements
+            ajouter {"type": "evolution_possible", "pokemon": self.pokemon_joueur} à self.evenements
 
 
     # -----------------------------------------------------------------
     # MÉTHODE PRIVÉE : _terminer_combat
     # -----------------------------------------------------------------
     #
-    # Marque le combat comme terminé et ajoute l'événement de fin.
-    #
-    # resultat : "victoire" ou "defaite"
+    # Marque le combat comme terminé.
 
     MÉTHODE _terminer_combat(self, resultat):
         self.combat_termine ← True
         self.resultat_combat ← resultat
 
-        ajouter {
-            "type": "fin_combat",
-            "resultat": resultat
-        } à self.evenements
+        SI resultat == "victoire":
+            self.vainqueur ← self.pokemon_joueur
+            self.perdant ← self.pokemon_adverse
+        SINON:
+            self.vainqueur ← self.pokemon_adverse
+            self.perdant ← self.pokemon_joueur
+
+        ajouter {"type": "fin_combat", "resultat": resultat} à self.evenements
 
 
     # -----------------------------------------------------------------
     # MÉTHODE : get_etat
     # -----------------------------------------------------------------
     #
-    # Renvoie un snapshot de l'état actuel du combat.
-    # Utilisé par state_combat.py et combat_ui.py pour l'affichage.
-    #
-    # Toutes les infos nécessaires pour dessiner l'écran de combat
-    # sont là : les deux Pokémon, leurs PV, les boosts, le tour, etc.
+    # Renvoie l'état actuel du combat pour l'affichage.
 
     MÉTHODE get_etat(self):
         RETOURNER {
@@ -618,6 +587,47 @@ CLASSE Combat:
             "combat_termine": self.combat_termine,
             "resultat": self.resultat_combat
         }
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_vainqueur
+    # -----------------------------------------------------------------
+    #
+    # Renvoie le nom du vainqueur (méthode imposée par le sujet).
+
+    MÉTHODE get_vainqueur(self):
+        SI NOT self.combat_termine:
+            RETOURNER None
+        SI self.vainqueur EST NOT None:
+            RETOURNER self.vainqueur.nom
+        RETOURNER None
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_perdant
+    # -----------------------------------------------------------------
+    #
+    # Renvoie le nom du perdant (méthode imposée par le sujet).
+
+    MÉTHODE get_perdant(self):
+        SI NOT self.combat_termine:
+            RETOURNER None
+        SI self.perdant EST NOT None:
+            RETOURNER self.perdant.nom
+        RETOURNER None
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : enregistrer_pokemon_rencontre
+    # -----------------------------------------------------------------
+    #
+    # Enregistre le Pokémon adverse dans le Pokédex (méthode imposée).
+
+    MÉTHODE enregistrer_pokemon_rencontre(self, pokedex):
+        SI self.pokemon_adverse EST NOT None:
+            pokedex.enregistrer_vu(self.pokemon_adverse.id)
+            RETOURNER True
+        RETOURNER False
 
 
     # -----------------------------------------------------------------
