@@ -1,0 +1,424 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+#
+# requests : pour appeler l'API PokéAPI
+# json : pour écrire le fichier de sortie
+# os / pathlib : pour créer les dossiers et gérer les chemins
+# time : pour respecter les limites de l'API (rate limiting)
+# settings : pour les chemins de destination
+
+importer requests
+importer json
+importer os
+importer time
+importer CHEMIN_DATA, CHEMIN_SPRITES_POKEMON depuis config.settings
+
+
+# =============================================================================
+# CONSTANTES
+# =============================================================================
+#
+# Liste des 54 Pokémon qu'on veut récupérer.
+# Organisée par type (18 types × 3 stades).
+#
+# Format : [id_pokeapi, id_pokeapi, ...]
+# On prend les IDs classiques de Pokémon (Bulbizarre=1, etc.)
+
+POKEMON_IDS ← [
+    # Plante (3 stades)
+    1, 2, 3,        # Bulbizarre, Herbizarre, Florizarre
+    # Feu
+    4, 5, 6,        # Salamèche, Reptincel, Dracaufeu
+    # Eau
+    7, 8, 9,        # Carapuce, Tortank, ? (on continue)
+    # ... (à compléter avec les 18 types)
+]
+
+# Correspondance type → diurne/nocturne
+# On définit ici, mais on pourra ajuster manuellement après
+TYPE_DAY_NIGHT ← {
+    "plante": "diurne",
+    "feu": "diurne",
+    "eau": "diurne",
+    "electrik": "diurne",
+    "normal": "diurne",
+    "vol": "diurne",
+    "insecte": "diurne",
+    "roche": "diurne",
+    "sol": "diurne",
+    "combat": "diurne",
+    "psy": "nocturne",
+    "spectre": "nocturne",
+    "tenebres": "nocturne",
+    "fee": "nocturne",
+    "acier": "nocturne",
+    "glace": "nocturne",
+    "dragon": "nocturne",
+    "poison": "nocturne"
+}
+
+# Noms humoristiques (à remplir avec l'équipe créative)
+# On les mettra à la main après le scraping
+NOMS_CUSTOM ← {
+    1: "BulbyLePlanteur",
+    2: "HerbizarreDeLaMort",
+    3: "FlorizarreMax",
+    # ... à compléter
+}
+
+# Délai entre les requêtes pour pas se faire ban
+DELAI_REQUETE ← 0.5    # 500ms
+
+
+# =============================================================================
+# FONCTION : get_pokemon_data
+# =============================================================================
+#
+# Appelle l'API PokéAPI pour un Pokémon donné.
+#
+# pokemon_id : l'ID du Pokémon dans PokéAPI (1, 2, 3...)
+#
+# Renvoie un dictionnaire avec les données brutes de l'API.
+# Si la requête échoue, on réessaie 3 fois avant d'abandonner.
+
+FONCTION get_pokemon_data(pokemon_id):
+    url ← "https://pokeapi.co/api/v2/pokemon/{}".format(pokemon_id)
+    
+    tentatives ← 0
+    TANT QUE tentatives < 3:
+        ESSAYER:
+            réponse ← requests.get(url)
+            SI réponse.status_code == 200:
+                RETOURNER réponse.json()
+            SINON:
+                tentatives ← tentatives + 1
+                time.sleep(1)
+        EN CAS D'ERREUR:
+            tentatives ← tentatives + 1
+            time.sleep(1)
+    
+    afficher erreur ("Impossible de récupérer le Pokémon " + str(pokemon_id))
+    RETOURNER None
+
+
+# =============================================================================
+# FONCTION : get_evolution_chain
+# =============================================================================
+#
+# Récupère la chaîne d'évolution d'un Pokémon.
+# PokéAPI a une structure un peu complexe, on simplifie :
+#   - On récupère l'URL de la chaîne d'évolution depuis pokemon-species
+#   - On parse pour trouver le niveau d'évolution
+#
+# species_url : l'URL de l'espèce (pokemon-species)
+#
+# Renvoie un dict {"to": id_evolution, "level": niveau} ou None
+
+FONCTION get_evolution_chain(species_url):
+    ESSAYER:
+        réponse ← requests.get(species_url)
+        SI réponse.status_code != 200:
+            RETOURNER None
+            
+        species_data ← réponse.json()
+        evolution_url ← species_data["evolution_chain"]["url"]
+        
+        réponse_evo ← requests.get(evolution_url)
+        SI réponse_evo.status_code != 200:
+            RETOURNER None
+            
+        evo_data ← réponse_evo.json()
+        
+        # Parsing basique de la chaîne
+        chain ← evo_data["chain"]
+        
+        # Chercher le Pokémon actuel dans la chaîne
+        # C'est complexe, on simplifie : on prend la première évolution trouvée
+        SI "evolves_to" DANS chain ET len(chain["evolves_to"]) > 0:
+            evolution ← chain["evolves_to"][0]
+            evolution_id ← extraire_id_de_url(evolution["species"]["url"])
+            
+            # Niveau d'évolution (peut être dans "evolution_details")
+            niveau ← 16    # valeur par défaut
+            SI len(evolution["evolution_details"]) > 0:
+                details ← evolution["evolution_details"][0]
+                SI "min_level" DANS details ET details["min_level"] EST NOT None:
+                    niveau ← details["min_level"]
+            
+            RETOURNER {"to": evolution_id, "level": niveau}
+    
+    EN CAS D'ERREUR:
+        passer
+    
+    RETOURNER None
+
+
+# =============================================================================
+# FONCTION : download_sprite
+# =============================================================================
+#
+# Télécharge un sprite et le sauvegarde dans le dossier assets.
+#
+# url : l'URL du sprite
+# chemin_destination : où sauvegarder le fichier
+#
+# Renvoie True si réussi, False sinon.
+
+FONCTION download_sprite(url, chemin_destination):
+    ESSAYER:
+        réponse ← requests.get(url)
+        SI réponse.status_code != 200:
+            RETOURNER False
+            
+        AVEC open(chemin_destination, "wb") COMME f:
+            f.write(réponse.content)
+            
+        RETOURNER True
+    EN CAS D'ERREUR:
+        RETOURNER False
+
+
+# =============================================================================
+# FONCTION : extraire_attaques
+# =============================================================================
+#
+# Extrait les attaques d'un Pokémon depuis les données de l'API.
+# On garde les 6 premières attaques de niveau 1-20 (pour avoir de la marge).
+#
+# moves_data : la liste des moves depuis l'API
+#
+# Renvoie une liste de dict {"name": ..., "type": ..., "power": ...}
+
+FONCTION extraire_attaques(moves_data):
+    attaques ← []
+    
+    POUR CHAQUE move_entry DANS moves_data:
+        # Récupérer les détails de l'attaque
+        move_url ← move_entry["move"]["url"]
+        
+        ESSAYER:
+            réponse ← requests.get(move_url)
+            SI réponse.status_code != 200:
+                CONTINUER
+                
+            move_detail ← réponse.json()
+            
+            # On ne garde que les attaques avec une puissance
+            puissance ← move_detail.get("power", 0)
+            SI puissance == 0:
+                CONTINUER
+                
+            # Récupérer le type
+            type_data ← move_detail["type"]
+            type_nom ← type_data["name"]
+            
+            attaques.ajouter({
+                "name": move_detail["name"],
+                "type": type_nom,
+                "power": puissance
+            })
+            
+            # Limiter à 6 attaques (ça suffira)
+            SI len(attaques) >= 6:
+                SORTIR DE LA BOUCLE
+                
+        EN CAS D'ERREUR:
+            CONTINUER
+    
+    RETOURNER attaques
+
+
+# =============================================================================
+# FONCTION : construire_pokemon_data
+# =============================================================================
+#
+# Construit le dictionnaire complet pour un Pokémon à partir
+# des données brutes de l'API.
+#
+# raw_data : les données brutes de get_pokemon_data()
+#
+# Renvoie un dict formaté pour notre pokemon.json.
+
+FONCTION construire_pokemon_data(raw_data):
+    pokemon_id ← raw_data["id"]
+    
+    # Récupérer le type principal (et secondaire)
+    types ← []
+    POUR CHAQUE type_entry DANS raw_data["types"]:
+        types.ajouter(type_entry["type"]["name"])
+    
+    # Déterminer diurne/nocturne basé sur le premier type
+    type_principal ← types[0] SI len(types) > 0 SINON "normal"
+    day_night ← TYPE_DAY_NIGHT.get(type_principal, "diurne")
+    
+    # Récupérer la chaîne d'évolution
+    species_url ← raw_data["species"]["url"]
+    evolution ← get_evolution_chain(species_url)
+    
+    # Déterminer le stade (1 par défaut)
+    stade ← 1
+    SI evolution EST NOT None ET evolution["to"] < pokemon_id:
+        stade ← 2   # approximation, à affiner
+    
+    # Récupérer les sprites
+    sprites_data ← raw_data["sprites"]
+    front_url ← sprites_data["front_default"]
+    back_url ← sprites_data["back_default"]
+    
+    # Noms
+    name_original ← raw_data["name"]
+    name_custom ← NOMS_CUSTOM.get(pokemon_id, name_original.title())
+    
+    # Stats de base
+    stats ← {}
+    POUR CHAQUE stat_entry DANS raw_data["stats"]:
+        nom_stat ← stat_entry["stat"]["name"]
+        valeur ← stat_entry["base_stat"]
+        SI nom_stat == "hp":
+            stats["hp"] ← valeur
+        SINON SI nom_stat == "attack":
+            stats["attack"] ← valeur
+        SINON SI nom_stat == "defense":
+            stats["defense"] ← valeur
+    
+    # Attaques
+    attaques ← extraire_attaques(raw_data["moves"])
+    
+    RETOURNER {
+        "id": pokemon_id,
+        "name_original": name_original,
+        "name_custom": name_custom,
+        "types": types,
+        "base_stats": stats,
+        "evolution": evolution,
+        "day_night": day_night,
+        "stade": stade,
+        "sprite_front": "assets/sprites/pokemon/{}_front.png".format(pokemon_id),
+        "sprite_back": "assets/sprites/pokemon/{}_back.png".format(pokemon_id),
+        "all_attacks": attaques
+    }
+
+
+# =============================================================================
+# FONCTION : download_all_sprites
+# =============================================================================
+#
+# Télécharge tous les sprites pour une liste de Pokémon.
+#
+# pokemon_list : la liste des données Pokémon (après construction)
+#
+# Renvoie le nombre de sprites téléchargés avec succès.
+
+FONCTION download_all_sprites(pokemon_list):
+    compteur ← 0
+    
+    POUR CHAQUE pokemon DANS pokemon_list:
+        pokemon_id ← pokemon["id"]
+        
+        # Créer le dossier s'il n'existe pas
+        dossier ← CHEMIN_SPRITES_POKEMON
+        SI NOT os.path.exists(dossier):
+            os.makedirs(dossier)
+        
+        # Front sprite
+        front_path ← dossier / "{}_front.png".format(pokemon_id)
+        front_url ← "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/{}.png".format(pokemon_id)
+        
+        SI download_sprite(front_url, front_path):
+            compteur ← compteur + 1
+        
+        # Back sprite
+        back_path ← dossier / "{}_back.png".format(pokemon_id)
+        back_url ← "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/back/{}.png".format(pokemon_id)
+        
+        SI download_sprite(back_url, back_path):
+            compteur ← compteur + 1
+        
+        # Petit délai pour pas spammer
+        time.sleep(DELAI_REQUETE)
+    
+    RETOURNER compteur
+
+
+# =============================================================================
+# FONCTION PRINCIPALE : main
+# =============================================================================
+#
+# Orchestre tout le scraping :
+#   1. Crée les dossiers nécessaires
+#   2. Pour chaque Pokémon, récupère les données
+#   3. Construit le dictionnaire final
+#   4. Sauvegarde dans pokemon.json
+#   5. Télécharge les sprites
+
+FONCTION main():
+    afficher "Début du scraping PokéAPI..."
+    
+    # Créer les dossiers
+    SI NOT os.path.exists(CHEMIN_DATA):
+        os.makedirs(CHEMIN_DATA)
+    
+    SI NOT os.path.exists(CHEMIN_SPRITES_POKEMON):
+        os.makedirs(CHEMIN_SPRITES_POKEMON)
+    
+    # Liste finale des Pokémon
+    pokemon_data_final ← []
+    
+    total ← len(POKEMON_IDS)
+    
+    POUR i, pokemon_id DANS enumerate(POKEMON_IDS):
+        afficher "Récupération {}/{} : Pokémon #{}".format(i+1, total, pokemon_id)
+        
+        # Récupérer les données brutes
+        raw_data ← get_pokemon_data(pokemon_id)
+        
+        SI raw_data EST None:
+            CONTINUER
+        
+        # Construire notre structure
+        pokemon_data ← construire_pokemon_data(raw_data)
+        pokemon_data_final.ajouter(pokemon_data)
+        
+        # Pause pour respecter les limites
+        time.sleep(DELAI_REQUETE)
+    
+    # Sauvegarder le JSON
+    json_path ← CHEMIN_DATA / "pokemon.json"
+    AVEC open(json_path, "w", encoding="utf-8") COMME f:
+        json.dump(pokemon_data_final, f, indent=2, ensure_ascii=False)
+    
+    afficher "Fichier JSON généré : " + str(json_path)
+    
+    # Télécharger les sprites
+    afficher "Téléchargement des sprites..."
+    nb_sprites ← download_all_sprites(pokemon_data_final)
+    afficher "{} sprites téléchargés".format(nb_sprites)
+    
+    afficher "Scraping terminé !"
+
+
+# =============================================================================
+# POINT D'ENTRÉE
+# =============================================================================
+
+SI __name__ == "__main__":
+    main()
+
+
+# =============================================================================
+# NOTES POST-SCRAPING
+# =============================================================================
+#
+# Après avoir exécuté ce script, il faut :
+#
+# 1. Éditer manuellement data/pokemon.json pour :
+#    - Remplacer "name_custom" par les vrais noms humoristiques
+#    - Ajuster "day_night" si besoin (certains Pokémon peuvent être mixtes)
+#    - Vérifier les évolutions (parfois l'API donne des infos incomplètes)
+#
+# 2. Vérifier que tous les sprites sont bien là
+#    (certains Pokémon n'ont pas de sprite back dans l'API)
+#
+# 3. Commit le fichier JSON et les sprites dans Git
+#    (comme ça toute l'équipe a la même base)
