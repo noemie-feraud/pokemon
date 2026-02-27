@@ -1,0 +1,319 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+#
+# Pas d'imports lourds ici. Le Pokédex ne dépend que des structures Python
+# de base (listes, ensembles). Pas de dépendance à Pygame ou aux autres
+# classes du jeu.
+
+# Note : On utilise des sets (ensembles) en interne pour la déduplication
+# automatique, mais on les convertit en listes pour la sérialisation JSON
+# (JSON ne supporte pas les sets).
+
+
+# =============================================================================
+# CLASSE POKEDEX
+# =============================================================================
+#
+# Gère les Pokémon rencontrés et capturés par le joueur.
+# Stocké dans le Player, sauvegardé avec le reste dans le slot.
+
+CLASSE Pokedex:
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+    #
+    # seen_ids : ensemble des IDs de Pokémon rencontrés (vus en combat)
+    # captured_ids : ensemble des IDs de Pokémon capturés
+    #
+    # Pourquoi des ensembles (set) plutôt que des listes ?
+    #   - Un Pokémon ne peut être enregistré qu'une fois (pas de doublon)
+    #   - Les sets gèrent la déduplication automatiquement
+    #   - La vérification d'appartenance (in) est plus rapide (O(1))
+    #
+    # On initialise avec des ensembles vides, ou on peut charger
+    # depuis une sauvegarde (via from_dict).
+
+    MÉTHODE __init__(self, seen_ids=None, captured_ids=None):
+        SI seen_ids EST None:
+            self.seen ← set()
+        SINON:
+            self.seen ← set(seen_ids)    # convertir en set si on reçoit une liste
+
+        SI captured_ids EST None:
+            self.captured ← set()
+        SINON:
+            self.captured ← set(captured_ids)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : enregistrer_vu
+    # -----------------------------------------------------------------
+    #
+    # Enregistre qu'un Pokémon a été rencontré en combat.
+    # Appelée par combat.py au début de chaque combat.
+    #
+    # pokemon_id : l'ID du Pokémon (1 à 54)
+    #
+    # Renvoie True si c'était un nouveau Pokémon (pas encore vu),
+    # False s'il était déjà enregistré.
+    #
+    # Pourquoi renvoyer un booléen ? Pour que l'UI puisse éventuellement
+    # afficher "Nouvelle entrée dans le Pokédex !" si c'est la première fois.
+
+    MÉTHODE enregistrer_vu(self, pokemon_id):
+        taille_avant ← len(self.seen)
+        ajouter pokemon_id à self.seen
+        RETOURNER len(self.seen) > taille_avant
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : enregistrer_capture
+    # -----------------------------------------------------------------
+    #
+    # Enregistre qu'un Pokémon a été capturé.
+    # Appelée par capture_system.py quand une capture réussit.
+    #
+    # Note : Un Pokémon capturé est forcément vu aussi.
+    # Si l'ID n'est pas déjà dans seen, on l'ajoute automatiquement.
+    #
+    # pokemon_id : l'ID du Pokémon capturé
+    #
+    # Renvoie True si c'était une nouvelle capture (pas encore capturé),
+    # False s'il était déjà capturé.
+
+    MÉTHODE enregistrer_capture(self, pokemon_id):
+        # Un Pokémon capturé est automatiquement vu
+        self.enregistrer_vu(pokemon_id)
+
+        taille_avant ← len(self.captured)
+        ajouter pokemon_id à self.captured
+        RETOURNER len(self.captured) > taille_avant
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : est_vu
+    # -----------------------------------------------------------------
+    #
+    # Vérifie si un Pokémon a été rencontré.
+    # Utilisé par state_pokedex.py pour l'affichage (étoiles, couleurs)
+    # et par d'autres systèmes qui ont besoin de savoir.
+    #
+    # pokemon_id : l'ID du Pokémon
+
+    MÉTHODE est_vu(self, pokemon_id):
+        RETOURNER pokemon_id EST dans self.seen
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : est_capture
+    # -----------------------------------------------------------------
+    #
+    # Vérifie si un Pokémon a été capturé.
+    # Utilisé par state_pokedex.py pour afficher l'étoile ★
+
+    MÉTHODE est_capture(self, pokemon_id):
+        RETOURNER pokemon_id EST dans self.captured
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_total_vus
+    # -----------------------------------------------------------------
+    #
+    # Renvoie le nombre total de Pokémon vus.
+    # Utilisé par le HUD, les stats de fin de partie, et l'affichage
+    # du Pokédex (ex: "Vus: 32/54").
+
+    MÉTHODE get_total_vus(self):
+        RETOURNER len(self.seen)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_total_captures
+    # -----------------------------------------------------------------
+    #
+    # Renvoie le nombre total de Pokémon capturés.
+    # Utilisé pour les stats et l'affichage.
+
+    MÉTHODE get_total_captures(self):
+        RETOURNER len(self.captured)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_liste_vus
+    # -----------------------------------------------------------------
+    #
+    # Renvoie la liste des IDs des Pokémon vus.
+    # Triée par ID pour un affichage cohérent.
+    #
+    # Utilisé par state_pokedex.py pour construire l'affichage.
+
+    MÉTHODE get_liste_vus(self):
+        liste ← liste de self.seen
+        trier liste
+        RETOURNER liste
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_liste_captures
+    # -----------------------------------------------------------------
+    #
+    # Renvoie la liste des IDs des Pokémon capturés.
+    # Triée par ID.
+
+    MÉTHODE get_liste_captures(self):
+        liste ← liste de self.captured
+        trier liste
+        RETOURNER liste
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_nouveautes
+    # -----------------------------------------------------------------
+    #
+    # Renvoie la liste des Pokémon qui ont été vus mais pas encore
+    # consultés (pour une éventuelle animation "Nouveau !").
+    # Optionnel, pas critique.
+    #
+    # Pour l'instant, on renvoie toujours une liste vide.
+    # On pourra implémenter plus tard si on a le temps.
+
+    MÉTHODE get_nouveautes(self):
+        RETOURNER []    # À implémenter si besoin
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_pourcentage_completion
+    # -----------------------------------------------------------------
+    #
+    # Renvoie le pourcentage de complétion du Pokédex (basé sur les vus).
+    # Retourne un float entre 0.0 et 1.0.
+    #
+    # total_pokemon : le nombre total de Pokémon dans le jeu (54)
+    #   Passé en paramètre pour éviter une dépendance circulaire.
+    #
+    # Utilisé par les stats de fin de partie.
+
+    MÉTHODE get_pourcentage_completion(self, total_pokemon):
+        SI total_pokemon == 0:
+            RETOURNER 0.0
+        RETOURNER len(self.seen) / total_pokemon
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_pourcentage_capture
+    # -----------------------------------------------------------------
+    #
+    # Renvoie le pourcentage de Pokémon capturés.
+    # Retourne un float entre 0.0 et 1.0.
+
+    MÉTHODE get_pourcentage_capture(self, total_pokemon):
+        SI total_pokemon == 0:
+            RETOURNER 0.0
+        RETOURNER len(self.captured) / total_pokemon
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : reset
+    # -----------------------------------------------------------------
+    #
+    # Remet le Pokédex à zéro (vide).
+    # Utilisé quand le joueur commence une nouvelle partie sur un slot
+    # existant (CA-04 : toutes les données précédentes sont remises à zéro).
+
+    MÉTHODE reset(self):
+        self.seen ← set()
+        self.captured ← set()
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : to_dict
+    # -----------------------------------------------------------------
+    #
+    # Convertit le Pokédex en dictionnaire pour la sauvegarde JSON.
+    #
+    # On convertit les sets en listes car JSON ne supporte pas les sets.
+    #
+    # Format de retour :
+    #   {
+    #       "seen": [1, 4, 7, 25],
+    #       "captured": [1, 4]
+    #   }
+
+    MÉTHODE to_dict(self):
+        RETOURNER {
+            "seen": liste triée de self.seen,
+            "captured": liste triée de self.captured
+        }
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE DE CLASSE : from_dict
+    # -----------------------------------------------------------------
+    #
+    # Recrée un Pokédex à partir d'un dictionnaire de sauvegarde.
+    # C'est l'inverse de to_dict().
+    #
+    # data : le dictionnaire {"seen": [...], "captured": [...]}
+    #
+    # Si des clés manquent, on initialise avec des ensembles vides.
+
+    MÉTHODE DE CLASSE from_dict(cls, data):
+        seen_ids ← data.get("seen", [])
+        captured_ids ← data.get("captured", [])
+
+        RETOURNER cls(seen_ids, captured_ids)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : __len__
+    # -----------------------------------------------------------------
+    #
+    # Renvoie le nombre total de Pokémon vus (pour compatibilité).
+
+    MÉTHODE __len__(self):
+        RETOURNER len(self.seen)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE SPÉCIALE : __str__
+    # -----------------------------------------------------------------
+    #
+    # Affichage debug.
+    # Exemple : "Pokédex (32 vus, 18 capturés)"
+
+    MÉTHODE __str__(self):
+        RETOURNER "Pokédex ({} vus, {} capturés)".format(
+            len(self.seen), len(self.captured)
+        )
+
+
+# =============================================================================
+# NOTES D'UTILISATION
+# =============================================================================
+#
+# Le Pokédex est stocké dans le Player. Voici comment il est utilisé
+# dans les autres parties du code :
+#
+# 1. Au début d'un combat (state_combat.py) :
+#    game_manager.player.pokedex.enregistrer_vu(pokemon_adverse.id)
+#
+# 2. Quand une capture réussit (capture_system.py) :
+#    game_manager.player.pokedex.enregistrer_capture(pokemon_capture.id)
+#
+# 3. Pour l'affichage (state_pokedex.py) :
+#    vus = player.pokedex.get_liste_vus()
+#    POUR CHAQUE id DANS vus:
+#        info = pokemon_data.get_info(id)
+#        est_capture = player.pokedex.est_capture(id)
+#
+# 4. Pour les stats de fin de partie :
+#    total_vus = player.pokedex.get_total_vus()
+#    pourcentage = player.pokedex.get_pourcentage_completion(54)
+#
+# 5. Sauvegarde (save_manager.py) :
+#    data["pokedex"] = player.pokedex.to_dict()
+#
+# 6. Chargement (Player.from_save) :
+#    player.pokedex = Pokedex.from_dict(data.get("pokedex", {}))
