@@ -1,0 +1,414 @@
+# =============================================================================
+# IMPORTS
+# =============================================================================
+#
+# json : pour la sérialisation/désérialisation des données
+# os : pour vérifier l'existence des fichiers et dossiers
+# pathlib : pour la manipulation des chemins
+# settings : pour CHEMIN_SAVES et NOMBRE_SLOTS_SAUVEGARDE
+
+importer json
+importer os
+importer CHEMIN_SAVES, NOMBRE_SLOTS_SAUVEGARDE depuis config.settings
+
+
+# =============================================================================
+# CLASSE SAVE MANAGER
+# =============================================================================
+#
+# Gère toutes les opérations de sauvegarde et de chargement.
+# Ne stocke pas d'état interne lourd — on peut l'instancier à chaque besoin.
+
+CLASSE SaveManager:
+
+    # -----------------------------------------------------------------
+    # CONSTRUCTEUR
+    # -----------------------------------------------------------------
+    #
+    # Vérifie que le dossier saves/ existe, le crée si nécessaire.
+    # Pas d'autre initialisation.
+
+    MÉTHODE __init__(self):
+        self._verifier_dossier_saves()
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _verifier_dossier_saves
+    # -----------------------------------------------------------------
+    #
+    # Vérifie que le dossier de sauvegarde existe.
+    # Si non, le crée (premier lancement du jeu).
+
+    MÉTHODE _verifier_dossier_saves(self):
+        SI NOT os.path.exists(CHEMIN_SAVES):
+            os.makedirs(CHEMIN_SAVES)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _get_slot_path
+    # -----------------------------------------------------------------
+    #
+    # Renvoie le chemin complet vers un fichier de slot.
+    #
+    # slot_index : 0, 1 ou 2 (correspond à slot_1.json, slot_2.json, slot_3.json)
+    #
+    # Pourquoi 0-based en interne mais 1-based pour l'utilisateur ?
+    #   - En Python, les listes sont 0-based, c'est plus naturel pour le code
+    #   - Dans l'interface utilisateur, on affiche "Slot 1", "Slot 2", "Slot 3"
+    #   - La conversion se fait ici : slot_index 0 → fichier "slot_1.json"
+
+    MÉTHODE _get_slot_path(self, slot_index):
+        numero_slot ← slot_index + 1
+        RETOURNER CHEMIN_SAVES / "slot_{}.json".format(numero_slot)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : slot_exists
+    # -----------------------------------------------------------------
+    #
+    # Vérifie si un slot de sauvegarde existe (fichier présent).
+    #
+    # slot_index : 0, 1 ou 2
+    #
+    # Renvoie True si le fichier existe, False sinon.
+
+    MÉTHODE slot_exists(self, slot_index):
+        chemin ← self._get_slot_path(slot_index)
+        RETOURNER os.path.exists(chemin)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_slot_info
+    # -----------------------------------------------------------------
+    #
+    # Renvoie un résumé des informations d'un slot pour l'affichage
+    # dans le menu principal (CA-06).
+    #
+    # Exemple de retour :
+    #   {
+    #       "occupied": True,
+    #       "trainer_name": "Axel",
+    #       "zone": "alentours",
+    #       "team_size": 4,
+    #       "max_level": 18,
+    #       "play_time": 3600,
+    #       "play_time_formatted": "01h00",
+    #       "pokedex_count": 23
+    #   }
+    #
+    # Si le slot est vide ou corrompu → {"occupied": False}
+    #
+    # Pourquoi un résumé séparé du chargement complet ?
+    #   - Le menu principal a besoin d'afficher rapidement les infos
+    #   - Charger tout le fichier JSON serait trop lourd
+    #   - On ne charge que les champs nécessaires
+
+    MÉTHODE get_slot_info(self, slot_index):
+        chemin ← self._get_slot_path(slot_index)
+
+        SI NOT os.path.exists(chemin):
+            RETOURNER {"occupied": False}
+
+        ESSAYER:
+            AVEC open(chemin, "r", encoding="utf-8") COMME f:
+                data ← json.load(f)
+
+                # Vérification minimale que c'est une sauvegarde valide
+                SI "trainer" NOT dans data:
+                    RETOURNER {"occupied": False, "corrupted": True}
+
+                trainer_data ← data["trainer"]
+                team_data ← data.get("team", [])
+
+                # Calculer le niveau max de l'équipe
+                niveau_max ← 0
+                POUR CHAQUE poke DANS team_data:
+                    SI poke.get("level", 0) > niveau_max:
+                        niveau_max ← poke["level"]
+
+                # Formater le temps de jeu
+                temps_secondes ← data.get("play_time", 0)
+                heures ← temps_secondes // 3600
+                minutes ← (temps_secondes % 3600) // 60
+
+                pokedex_data ← data.get("pokedex", {})
+                pokedex_count ← len(pokedex_data.get("seen", []))
+
+                RETOURNER {
+                    "occupied": True,
+                    "trainer_name": trainer_data.get("name", "???"),
+                    "zone": trainer_data.get("position", {}).get("zone", "?"),
+                    "team_size": len(team_data),
+                    "max_level": niveau_max,
+                    "play_time": temps_secondes,
+                    "play_time_formatted": "{:02d}h{:02d}".format(heures, minutes),
+                    "pokedex_count": pokedex_count
+                }
+
+        EN CAS D'ERREUR:
+            # Fichier corrompu ou illisible
+            RETOURNER {"occupied": False, "corrupted": True}
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_all_slots_info
+    # -----------------------------------------------------------------
+    #
+    # Renvoie les infos des 3 slots dans une liste.
+    # Utilisé par state_menu.py pour savoir quels slots sont occupés.
+    #
+    # Retour : [info_slot_0, info_slot_1, info_slot_2]
+    #   Chaque info est un dict (cf get_slot_info)
+
+    MÉTHODE get_all_slots_info(self):
+        infos ← liste vide
+        POUR i DE 0 À NOMBRE_SLOTS_SAUVEGARDE - 1:
+            ajouter self.get_slot_info(i) à infos
+        RETOURNER infos
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : save
+    # -----------------------------------------------------------------
+    #
+    # Sauvegarde complète de l'état du jeu dans un slot.
+    #
+    # game_manager : l'objet Game contenant toutes les données
+    # slot_index : 0, 1 ou 2
+    #
+    # Renvoie True si la sauvegarde a réussi, False sinon.
+    #
+    # Étapes :
+    #   1. Récupérer toutes les données depuis game_manager
+    #   2. Construire le dictionnaire de sauvegarde
+    #   3. Écrire le fichier JSON
+    #
+    # Pourquoi on passe game_manager et pas player directement ?
+    #   - On a besoin de day_night_cycle, quest_manager, etc.
+    #   - Game_manager est le hub central, il a tout
+
+    MÉTHODE save(self, game_manager, slot_index):
+        player ← game_manager.player
+        chemin ← self._get_slot_path(slot_index)
+
+        # Sécurité : si pas de joueur, on sauvegarde rien
+        SI player EST None:
+            RETOURNER False
+
+        # Construire les données
+        data ← {
+            "trainer": {
+                "name": player.name,
+                "character_id": player.character_id,
+                "position": {
+                    "zone": player.zone_actuelle,
+                    "x": player.x,
+                    "y": player.y
+                }
+            },
+            "team": player.team.to_list(),
+            "storage": player.storage.to_list(),
+            "inventory": player.inventory.to_dict() SI hasattr(player, "inventory") SINON {"items": {}},
+            "credits": player.credits,
+            "trainers_beaten": player.trainers_beaten,
+            "quests_completed": player.quests_completed,
+            "quests_active": player.quests_active,
+            "pokedex": player.pokedex.to_dict() SI hasattr(player, "pokedex") SINON {"seen": [], "captured": []},
+            "day_night_time": game_manager.day_night_cycle.temps_actuel,
+            "play_time": player.play_time
+        }
+
+        # Ajouter des métadonnées (utiles pour le debug)
+        data["_metadata"] = {
+            "version": "1.0",
+            "save_date": self._get_date_heure()
+        }
+
+        ESSAYER:
+            # Créer le dossier s'il n'existe pas (sécurité)
+            self._verifier_dossier_saves()
+
+            AVEC open(chemin, "w", encoding="utf-8") COMME f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+
+            RETOURNER True
+
+        EN CAS D'ERREUR comme e:
+            afficher erreur ("Erreur sauvegarde : " + str(e))
+            RETOURNER False
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : auto_save
+    # -----------------------------------------------------------------
+    #
+    # Sauvegarde automatique (même chose que save, mais appelée
+    # automatiquement après événements clés).
+    #
+    # On garde une méthode séparée pour pouvoir éventuellement
+    # ajouter un comportement différent (ex: pas d'écrasement si
+    # c'est une nouvelle partie sans slot assigné).
+
+    MÉTHODE auto_save(self, game_manager, slot_index):
+        SI slot_index EST None:
+            RETOURNER False    # pas de slot assigné, on sauvegarde pas
+
+        RETOURNER self.save(game_manager, slot_index)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : load
+    # -----------------------------------------------------------------
+    #
+    # Charge une sauvegarde et retourne les données brutes.
+    #
+    # slot_index : 0, 1 ou 2
+    #
+    # Renvoie le dictionnaire complet des données si réussi,
+    # None si le slot est vide ou corrompu.
+    #
+    # C'est state_menu.py qui utilisera ces données pour recréer
+    # le Player via Player.from_save().
+
+    MÉTHODE load(self, slot_index):
+        chemin ← self._get_slot_path(slot_index)
+
+        SI NOT os.path.exists(chemin):
+            RETOURNER None
+
+        ESSAYER:
+            AVEC open(chemin, "r", encoding="utf-8") COMME f:
+                data ← json.load(f)
+
+            # Vérification d'intégrité basique
+            SI NOT self._valider_donnees(data):
+                afficher warning ("Sauvegarde corrompue : " + str(chemin))
+                RETOURNER None
+
+            RETOURNER data
+
+        EN CAS D'ERREUR:
+            RETOURNER None
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _valider_donnees
+    # -----------------------------------------------------------------
+    #
+    # Vérifie qu'une sauvegarde chargée a les champs minimum requis.
+    # Protège contre les fichiers corrompus ou modifiés manuellement.
+    #
+    # data : le dictionnaire chargé
+    # Retourne True si valide, False sinon.
+
+    MÉTHODE _valider_donnees(self, data):
+        # Vérifier la présence des champs essentiels
+        champs_requis ← ["trainer", "team", "storage", "credits"]
+
+        POUR CHAQUE champ DANS champs_requis:
+            SI champ NOT dans data:
+                RETOURNER False
+
+        # Vérifier que trainer a les sous-champs nécessaires
+        trainer ← data["trainer"]
+        SI "name" NOT dans trainer OU "character_id" NOT dans trainer:
+            RETOURNER False
+
+        RETOURNER True
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : delete_slot
+    # -----------------------------------------------------------------
+    #
+    # Supprime un fichier de sauvegarde.
+    # Utilisé quand le joueur lance une nouvelle partie sur un slot existant.
+    #
+    # slot_index : 0, 1 ou 2
+    #
+    # Renvoie True si la suppression a réussi (ou si le fichier
+    # n'existait pas), False en cas d'erreur.
+
+    MÉTHODE delete_slot(self, slot_index):
+        chemin ← self._get_slot_path(slot_index)
+
+        SI NOT os.path.exists(chemin):
+            RETOURNER True    # déjà vide, c'est bon
+
+        ESSAYER:
+            os.remove(chemin)
+            RETOURNER True
+        EN CAS D'ERREUR:
+            RETOURNER False
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : is_slot_corrupted
+    # -----------------------------------------------------------------
+    #
+    # Vérifie si un slot est corrompu sans le charger complètement.
+    # Utilisé par l'interface pour afficher un avertissement.
+    #
+    # slot_index : 0, 1 ou 2
+    #
+    # Renvoie True si le fichier existe mais est invalide.
+
+    MÉTHODE is_slot_corrupted(self, slot_index):
+        info ← self.get_slot_info(slot_index)
+        RETOURNER info.get("corrupted", False)
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE PRIVÉE : _get_date_heure
+    # -----------------------------------------------------------------
+    #
+    # Renvoie la date et l'heure actuelles formatées pour les métadonnées.
+    # Exemple : "2026-02-27 15:30:00"
+
+    MÉTHODE _get_date_heure(self):
+        importer datetime
+        maintenant ← datetime.datetime.now()
+        RETOURNER maintenant.strftime("%Y-%m-%d %H:%M:%S")
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_nombre_slots_occupes
+    # -----------------------------------------------------------------
+    #
+    # Renvoie le nombre de slots occupés (utile pour l'UI).
+
+    MÉTHODE get_nombre_slots_occupes(self):
+        compteur ← 0
+        POUR i DE 0 À NOMBRE_SLOTS_SAUVEGARDE - 1:
+            SI self.slot_exists(i):
+                compteur ← compteur + 1
+        RETOURNER compteur
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE : get_premier_slot_libre
+    # -----------------------------------------------------------------
+    #
+    # Renvoie l'index du premier slot vide (pour nouvelle partie
+    # automatique si le joueur n'a pas choisi).
+    #
+    # Retourne None si tous les slots sont occupés.
+
+    MÉTHODE get_premier_slot_libre(self):
+        POUR i DE 0 À NOMBRE_SLOTS_SAUVEGARDE - 1:
+            SI NOT self.slot_exists(i):
+                RETOURNER i
+        RETOURNER None
+
+
+    # -----------------------------------------------------------------
+    # MÉTHODE SPÉCIALE : __str__
+    # -----------------------------------------------------------------
+    #
+    # Affichage debug.
+
+    MÉTHODE __str__(self):
+        occupes ← self.get_nombre_slots_occupes()
+        RETOURNER "SaveManager ({} slots, {} occupés)".format(
+            NOMBRE_SLOTS_SAUVEGARDE, occupes
+        )
