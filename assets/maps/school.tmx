@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<map version="1.10" tiledversion="1.11.2" orientation="orthogonal" renderorder="right-down" width="10" height="4" tilewidth="32" tileheight="32" infinite="0" nextlayerid="6" nextobjectid="17">
+ <tileset firstgid="1" source="tilesets/school.tsx"/>
+ <layer id="1" name="Ground" width="10" height="4">
+  <data encoding="csv">
+1399,1400,1401,1402,1403,1404,1405,1406,1407,1408,
+1459,1460,1461,1462,1463,1464,1465,1466,1467,1468,
+1519,1520,1521,1522,1523,1524,1525,1526,1527,1528,
+1579,1580,1581,1582,1583,1584,1585,1586,1587,1588
+</data>
+ </layer>
+ <layer id="2" name="Decorations" width="10" height="4">
+  <data encoding="csv">
+0,0,0,0,0,1404,1405,1406,0,1408,
+1459,1460,1461,0,0,1464,0,0,1467,0,
+1519,1520,1521,0,0,1524,0,0,0,0,
+0,0,0,0,0,0,0,0,0,0
+</data>
+ </layer>
+ <objectgroup id="3" name="Collisions">
+  <object id="1" x="25" y="35" width="49" height="25.5"/>
+  <object id="2" x="25" y="72.75" width="49.75" height="25.25"/>
+  <object id="3" x="99.75" y="87" width="25.75" height="26"/>
+  <object id="4" x="105.5" y="79.75" width="23.25" height="7"/>
+  <object id="5" x="117.75" y="76" width="8.5" height="2.75"/>
+  <object id="6" x="125.25" y="53.75" width="12" height="62"/>
+  <object id="7" x="175.75" y="14.5" width="11.5" height="76.75"/>
+  <object id="8" x="187" y="76.25" width="24.25" height="15.5"/>
+  <object id="9" x="188.25" y="102" width="10.25" height="12.5"/>
+  <object id="10" x="200.75" y="91.5" width="11" height="24"/>
+  <object id="11" x="262" y="35.25" width="12.5" height="12"/>
+  <object id="12" x="189" y="31.5" width="9" height="10.5"/>
+  <object id="13" x="189" y="56.25" width="8.75" height="10.25"/>
+  <object id="14" x="186.5" y="0.25" width="95.5" height="25"/>
+  <object id="15" x="0.5" y="0.25" width="175.5" height="26"/>
+ </objectgroup>
+ <objectgroup id="4" name="Transitions">
+  <object id="16" x="168.25" y="112.25">
+   <properties>
+    <property name="spawn_x" type="int" value="8"/>
+    <property name="spawn_y" type="int" value="3"/>
+    <property name="target_zone" value="&quot;campus&quot;"/>
+   </properties>
+  </object>
+ </objectgroup>
+ <objectgroup id="5" name="Spawns"/>
+</map>

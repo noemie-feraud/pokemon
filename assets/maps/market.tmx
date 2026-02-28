@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<map version="1.10" tiledversion="1.11.2" orientation="orthogonal" renderorder="right-down" width="3" height="3" tilewidth="32" tileheight="32" infinite="0" nextlayerid="5" nextobjectid="10">
+ <tileset firstgid="1" source="tilesets/market.tsx"/>
+ <layer id="1" name="Grass" width="3" height="3">
+  <data encoding="csv">
+698,699,700,
+758,759,760,
+818,819,820
+</data>
+ </layer>
+ <objectgroup id="2" name="Collisions">
+  <object id="1" x="22.125" y="20.375" width="12.875" height="43.625"/>
+  <object id="2" x="0.125" y="48" width="21.75" height="16.625"/>
+  <object id="3" x="0.125" y="73.375" width="22.25" height="15.25"/>
+  <object id="4" x="72.625" y="47.75" width="23.75" height="41.125"/>
+  <object id="5" x="71.75" y="13" width="24.25" height="19.5"/>
+  <object id="6" x="34.875" y="8.375" width="36" height="18.5"/>
+  <object id="7" x="0.125" y="17.75" width="9.5" height="21.375"/>
+  <object id="8" x="9.125" y="11.375" width="13.5" height="14.875"/>
+ </objectgroup>
+ <objectgroup id="3" name="Transitions">
+  <object id="9" x="41.125" y="92.875">
+   <properties>
+    <property name="spawn_x" type="int" value="13"/>
+    <property name="spawn_y" type="int" value="9"/>
+    <property name="target_zone" value="&quot;campus&quot;"/>
+   </properties>
+  </object>
+ </objectgroup>
+ <objectgroup id="4" name="Spawns"/>
+</map>
