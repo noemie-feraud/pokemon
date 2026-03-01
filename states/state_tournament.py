@@ -4,10 +4,12 @@
 #
 # This state manages the tournament - the endgame content.
 # It handles the bracket display, combat sequence, and final victory.
+# Uses Tournament class for logic and opponents.
 
 import pygame
 from states.state import State
 from config.settings import SCREEN_WIDTH, SCREEN_HEIGHT
+from endgame.tournament import Tournament
 
 
 # =============================================================================
@@ -31,7 +33,7 @@ NUM_ROUNDS = 3
 class StateTournament(State):
     """
     Manages tournament combat sequence.
-    Pushed by tournament NPC in Arena.
+    Pushed by tournament NPC in Arena after paying entry fee.
     Pushes StateCombat for each round.
     """
     
@@ -41,16 +43,19 @@ class StateTournament(State):
     # CONSTRUCTOR
     # -------------------------------------------------------------------------
     
-    def __init__(self, game_manager, opponents=None):
+    def __init__(self, game_manager, tournament):
         """
         Initialize tournament state.
         
         Args:
             game_manager: reference to Game
-            opponents: list of TournamentTrainers (3 opponents)
-                       passed by NPC or loaded from data
+            tournament: Tournament instance (already registered)
         """
         super().__init__(game_manager)
+        
+        # --- TOURNAMENT LOGIC ---
+        self.tournament = tournament
+        self.opponents = tournament.get_all_opponents()
         
         # --- FONTS ---
         self.font_title = pygame.font.Font(None, 40)
@@ -59,89 +64,12 @@ class StateTournament(State):
         self.font_detail = pygame.font.Font(None, 20)
         self.font_message = pygame.font.Font(None, 34)
         
-        # --- OPPONENTS ---
-        if opponents is not None:
-            self.opponents = opponents
-        else:
-            self.opponents = self._load_opponents()
-        
         # --- PROGRESSION ---
         self.current_round = 0          # 0, 1, 2
-        self.results = []               # ["victory", "victory", ...]
         self.phase = PHASE_BRACKET
         
         # --- COMBAT FLAG ---
         self.combat_launched = False
-    
-    
-    # -------------------------------------------------------------------------
-    # PRIVATE METHODS
-    # -------------------------------------------------------------------------
-    
-    def _load_opponents(self):
-        """
-        Load the 3 tournament opponents from game data.
-        Each opponent is a Trainer with a Pokemon team.
-        
-        Returns:
-            list of Trainer instances
-        """
-        from entities.npc_trainer import Trainer
-        
-        # In real implementation, this would load from a JSON file
-        # Here we create placeholder opponents with generated teams
-        
-        opponents = []
-        
-        # Round 1: 2 Pokemon, levels 20-22
-        opponents.append(Trainer({
-            "id": "tournament_1",
-            "name": "Challenger Alex",
-            "type": "trainer",
-            "battle_level": "B3",
-            "reward_credits": 0,
-            "team": self._generate_team(2, 20, 22)
-        }))
-        
-        # Round 2: 3 Pokemon, levels 22-24
-        opponents.append(Trainer({
-            "id": "tournament_2",
-            "name": "Vétéran Marie",
-            "type": "trainer",
-            "battle_level": "B3",
-            "reward_credits": 0,
-            "team": self._generate_team(3, 22, 24)
-        }))
-        
-        # Round 3: 3 Pokemon, levels 24-25 (stage 3)
-        opponents.append(Trainer({
-            "id": "tournament_3",
-            "name": "Champion Lucas",
-            "type": "trainer",
-            "battle_level": "B3",
-            "reward_credits": 0,
-            "team": self._generate_team(3, 24, 25, max_stage=3)
-        }))
-        
-        return opponents
-    
-    
-    def _generate_team(self, count, min_level, max_level, max_stage=2):
-        """
-        Generate a random team for tournament opponents.
-        
-        Args:
-            count: number of Pokemon
-            min_level: minimum level
-            max_level: maximum level
-            max_stage: maximum evolution stage
-            
-        Returns:
-            list of Pokemon instances
-        """
-        # This would use pokemon_data to generate proper teams
-        # For now, return empty list (will be implemented with real data)
-        return []
     
     
     # -------------------------------------------------------------------------
@@ -167,12 +95,19 @@ class StateTournament(State):
         
         # Check if trainer is defeated (ID added to trainers_beaten)
         if opponent.id in player.trainers_beaten:
-            # Victory
-            self.results.append("victory")
-            self.phase = PHASE_ROUND_RESULT
+            # Victory - register with tournament logic
+            result = self.tournament.register_result(True)
+            self.current_round = self.tournament.current_round
+            
+            if result.get("final_victory"):
+                self.phase = PHASE_FINAL_VICTORY
+                self.game_manager.audio_manager.play_music("victory")
+            else:
+                self.phase = PHASE_ROUND_RESULT
+        
         else:
             # Defeat
-            self.results.append("defeat")
+            self.tournament.register_result(False)
             self.phase = PHASE_DEFEAT
     
     
@@ -213,7 +148,7 @@ class StateTournament(State):
         
         combat = StateCombat(
             self.game_manager,
-            opponent_pokemon=opponent.get_first_pokemon(),
+            opponent_pokemon=opponent.get_first_valid(),
             combat_type="trainer",
             trainer=opponent
         )
@@ -225,17 +160,9 @@ class StateTournament(State):
     def _handle_round_result(self, event):
         """Handle round result display."""
         if event.key in [pygame.K_SPACE, pygame.K_RETURN]:
-            # Move to next round
-            self.current_round += 1
-            
-            if self.current_round >= NUM_ROUNDS:
-                # All rounds won → final victory!
-                self.phase = PHASE_FINAL_VICTORY
-                self.game_manager.audio_manager.play_music("victory")
-            else:
-                # Next round
-                self.phase = PHASE_BRACKET
-                self.game_manager.audio_manager.play_music("tournament")
+            # Next round (already updated in tournament)
+            self.phase = PHASE_BRACKET
+            self.game_manager.audio_manager.play_music("tournament")
     
     
     def _handle_final_victory(self, event):
@@ -258,8 +185,8 @@ class StateTournament(State):
                 pokemon_count=len(player.team.pokemon) + len(player.storage.pokemon),
                 pokedex_count=player.pokedex.get_total_seen()
             )
-        except Exception:
-            pass  # Leaderboard not critical
+        except Exception as e:
+            print(f"Leaderboard error: {e}")
         
         # Go to GameOver (victory)
         from states.state_game_over import StateGameOver
@@ -329,18 +256,20 @@ class StateTournament(State):
         bracket_y = 80
         round_height = 80
         
+        results = self.tournament.get_results()
+        
         for i in range(NUM_ROUNDS):
             y = bracket_y + i * round_height
-            opponent = self.opponents[i]
+            opponent = self.opponents[i] if i < len(self.opponents) else None
             round_name = ROUND_NAMES[i]
             
             # --- ROUND FRAME ---
             frame_rect = pygame.Rect(bracket_x, y, SCREEN_WIDTH - 160, 65)
             
             # Color based on state
-            if i < len(self.results):
+            if i < len(results):
                 # Round finished
-                if self.results[i] == "victory":
+                if results[i] == "victory":
                     bg_color = (30, 60, 30)      # dark green
                     border_color = (100, 255, 100)
                 else:
@@ -363,7 +292,7 @@ class StateTournament(State):
             screen.blit(round_surface, (bracket_x + 15, y + 8))
             
             # --- OPPONENT ---
-            if i < len(self.results) or i == self.current_round:
+            if opponent is not None and (i < len(results) or i == self.current_round):
                 # Past or current round → show name
                 adv_text = f"vs {opponent.name}"
                 adv_color = (255, 255, 255)
@@ -375,15 +304,15 @@ class StateTournament(State):
             screen.blit(adv_surface, (bracket_x + 200, y + 8))
             
             # --- POKEMON COUNT ---
-            if i < len(self.results) or i == self.current_round:
+            if opponent is not None and (i < len(results) or i == self.current_round):
                 team_size = len(opponent.team.pokemon) if hasattr(opponent, 'team') else 0
                 team_text = f"{team_size} Pokémon"
                 team_surface = self.font_detail.render(team_text, True, (150, 150, 180))
                 screen.blit(team_surface, (bracket_x + 200, y + 35))
             
             # --- RESULT ---
-            if i < len(self.results):
-                if self.results[i] == "victory":
+            if i < len(results):
+                if results[i] == "victory":
                     res_text = "✓ Victoire"
                     res_color = (100, 255, 100)
                 else:
