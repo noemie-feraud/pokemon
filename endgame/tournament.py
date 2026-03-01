@@ -4,48 +4,19 @@
 #
 # Tournament logic. Manages bracket, opponents, access conditions.
 # Used by state_tournament.py.
+# Opponents are loaded from trainers.json (with is_tournament flag).
 
-import random
 import json
 import os
-from entities.pokemon import Pokemon
 from entities.trainer import Trainer
-from config.settings import TOURNAMENT_ENTRY_FEE, WILD_POKEMON_LEVELS
+from config.settings import TOURNAMENT_ENTRY_FEE
 
 
 # =============================================================================
 # CONSTANTS
 # =============================================================================
 
-TOURNAMENT_DATA_PATH = "data/tournament.json"
-
-# Fallback if file doesn't exist
-DEFAULT_ROUNDS = [
-    {
-        "name": "Quarter-final",
-        "opponent_name": "Challenger Alex",
-        "pokemon_count": 2,
-        "min_level": 20,
-        "max_level": 22,
-        "max_stage": 2
-    },
-    {
-        "name": "Semi-final",
-        "opponent_name": "Veteran Marie",
-        "pokemon_count": 3,
-        "min_level": 22,
-        "max_level": 24,
-        "max_stage": 2
-    },
-    {
-        "name": "Final",
-        "opponent_name": "Champion Lucas",
-        "pokemon_count": 3,
-        "min_level": 24,
-        "max_level": 25,
-        "max_stage": 3
-    }
-]
+TRAINERS_DATA_PATH = "data/trainers.json"
 
 
 # =============================================================================
@@ -62,21 +33,18 @@ class Tournament:
     # CONSTRUCTOR
     # -------------------------------------------------------------------------
     
-    def __init__(self, pokemon_data):
+    def __init__(self):
         """
         Initialize tournament.
-        
-        Args:
-            pokemon_data: catalog of all 54 Pokemon (for team generation)
+        Loads tournament opponents from trainers.json.
         """
-        self.pokemon_data = pokemon_data
         
-        # Load configuration
-        self.rounds_config = self._load_config()
-        
-        # Generate opponents
+        # Load tournament opponents
         self.opponents = []
-        self._generate_opponents()
+        self._load_opponents()
+        
+        # Round names (for display)
+        self.round_names = ["Quart de finale", "Demi-finale", "Finale"]
         
         # Bracket state
         self.current_round = 0
@@ -89,152 +57,39 @@ class Tournament:
     # PRIVATE METHODS
     # -------------------------------------------------------------------------
     
-    def _load_config(self):
+    def _load_opponents(self):
         """
-        Load tournament configuration from JSON file.
-        Fallback to defaults if file doesn't exist.
+        Load tournament opponents from trainers.json.
+        Filters trainers with is_tournament = true and sorts by tournament_round.
         """
         try:
-            if os.path.exists(TOURNAMENT_DATA_PATH):
-                with open(TOURNAMENT_DATA_PATH, "r") as f:
-                    data = json.load(f)
-                    return data.get("rounds", DEFAULT_ROUNDS)
-        except Exception:
-            pass
-        
-        return DEFAULT_ROUNDS
-    
-    
-    def _generate_opponents(self):
-        """Create Trainer objects for each round."""
-        self.opponents = []
-        
-        for round_config in self.rounds_config:
-            trainer = self._create_opponent(round_config)
-            self.opponents.append(trainer)
-    
-    
-    def _create_opponent(self, round_config):
-        """
-        Create a Trainer for a given round.
-        
-        Args:
-            round_config: dict with name, pokemon_count, min/max level, max_stage
-        
-        Returns:
-            Trainer instance
-        """
-        name = round_config.get("opponent_name", "Opponent")
-        pokemon_count = round_config.get("pokemon_count", 2)
-        min_level = round_config.get("min_level", 20)
-        max_level = round_config.get("max_level", 25)
-        max_stage = round_config.get("max_stage", 3)
-        
-        # Generate team
-        team = self._generate_team(pokemon_count, min_level, max_level, max_stage)
-        
-        # Create trainer
-        trainer_data = {
-            "id": "tournament_" + name.lower().replace(" ", "_"),
-            "name": name,
-            "type": "trainer",
-            "position": {"x": 0, "y": 0},  # no map position
-            "direction": "down",
-            "dialogues": {
-                "challenge": ["Get ready to battle!"],
-                "defeat": ["Well played..."],
-                "already_beaten": ["You already beat me!"]
-            },
-            "reward_credits": 0  # no credits in tournament
-        }
-        
-        trainer = Trainer(trainer_data)
-        trainer.team = team
-        
-        return trainer
-    
-    
-    def _generate_team(self, count, min_level, max_level, max_stage):
-        """
-        Generate a random team for an opponent.
-        
-        Constraints:
-        - count distinct Pokemon
-        - levels in [min_level, max_level]
-        - stage ≤ max_stage
-        - varied types (avoid 2 of same type)
-        
-        Args:
-            count: number of Pokemon
-            min_level, max_level: level range
-            max_stage: maximum evolution stage
-        
-        Returns:
-            list of Pokemon instances
-        """
-        team = []
-        used_types = set()
-        used_ids = set()
-        
-        # Get all stage 1 Pokemon IDs
-        all_ids = self.pokemon_data.get_stage1_ids()
-        
-        # Shuffle for variety
-        shuffled = list(all_ids)
-        random.shuffle(shuffled)
-        
-        for pokemon_id in shuffled:
-            if len(team) >= count:
-                break
-            
-            # Get info to check type
-            info = self.pokemon_data.get_info(pokemon_id)
-            pokemon_types = info["types"]
-            
-            # Try to avoid duplicate types
-            type_already_used = False
-            for t in pokemon_types:
-                if t in used_types:
-                    type_already_used = True
-            
-            # If type already used and we still have options, skip
-            if type_already_used and len(team) < count - 1:
-                continue
-            
-            # Random level
-            level = random.randint(min_level, max_level)
-            
-            # Create Pokemon
-            pokemon = Pokemon.from_data(pokemon_id, level)
-            
-            # Check stage
-            if pokemon.evolution_stage > max_stage:
-                # Reduce to max stage by adjusting level? For now, skip
-                continue
-            
-            # Add to team
-            team.append(pokemon)
-            used_ids.add(pokemon_id)
-            for t in pokemon_types:
-                used_types.add(t)
-        
-        # If we don't have enough Pokemon (type constraint too strict),
-        # fill with random ones
-        if len(team) < count:
-            for pokemon_id in shuffled:
-                if len(team) >= count:
-                    break
-                if pokemon_id in used_ids:
-                    continue
+            if os.path.exists(TRAINERS_DATA_PATH):
+                with open(TRAINERS_DATA_PATH, "r", encoding="utf-8") as f:
+                    trainers_data = json.load(f)
                 
-                level = random.randint(min_level, max_level)
-                pokemon = Pokemon.from_data(pokemon_id, level)
+                # Filter tournament trainers
+                tournament_trainers = [
+                    t for t in trainers_data 
+                    if t.get("is_tournament") and t.get("zone") == "arena"
+                ]
                 
-                if pokemon.evolution_stage <= max_stage:
-                    team.append(pokemon)
-                    used_ids.add(pokemon_id)
+                # Sort by round (1 = quarter, 2 = semi, 3 = final)
+                tournament_trainers.sort(key=lambda t: t.get("tournament_round", 99))
+                
+                # Create Trainer instances
+                self.opponents = [Trainer(t) for t in tournament_trainers]
+                
+                # Verify we have exactly 3 opponents
+                if len(self.opponents) != 3:
+                    print(f"Warning: Tournament has {len(self.opponents)} opponents (expected 3)")
+            
+            else:
+                print(f"Warning: Trainers file not found: {TRAINERS_DATA_PATH}")
+                self.opponents = []
         
-        return team
+        except Exception as e:
+            print(f"Error loading tournament opponents: {e}")
+            self.opponents = []
     
     
     # -------------------------------------------------------------------------
@@ -255,21 +110,28 @@ class Tournament:
         if player.credits < TOURNAMENT_ENTRY_FEE:
             return {
                 "can": False,
-                "reason": f"Not enough credits (need {TOURNAMENT_ENTRY_FEE}, you have {player.credits})"
+                "reason": f"Pas assez de crédits (besoin de {TOURNAMENT_ENTRY_FEE}, vous en avez {player.credits})"
             }
         
         # Check team
         if not player.team.has_valid_pokemon:
             return {
                 "can": False,
-                "reason": "You have no Pokemon able to fight!"
+                "reason": "Vous n'avez aucun Pokémon en état de combattre !"
             }
         
         # Check if tournament already in progress
         if self.in_progress:
             return {
                 "can": False,
-                "reason": "A tournament is already in progress"
+                "reason": "Un tournoi est déjà en cours"
+            }
+        
+        # Check if we have opponents
+        if len(self.opponents) == 0:
+            return {
+                "can": False,
+                "reason": "Pas d'adversaires disponibles"
             }
         
         return {"can": True, "reason": None}
@@ -293,9 +155,6 @@ class Tournament:
         # Deduct credits
         player.credits -= TOURNAMENT_ENTRY_FEE
         
-        # Regenerate opponents (new teams each attempt)
-        self._generate_opponents()
-        
         # Reset bracket
         self.current_round = 0
         self.results = []
@@ -311,19 +170,19 @@ class Tournament:
     
     def get_round_count(self):
         """Return number of rounds."""
-        return len(self.rounds_config)
+        return len(self.opponents)
     
     
     def get_round_name(self, index):
         """Return name of round at index."""
-        if index < len(self.rounds_config):
-            return self.rounds_config[index].get("name", f"Round {index+1}")
-        return "Unknown round"
+        if 0 <= index < len(self.round_names):
+            return self.round_names[index]
+        return f"Round {index+1}"
     
     
     def get_opponent(self, index):
         """Return Trainer for given round index."""
-        if index < len(self.opponents):
+        if 0 <= index < len(self.opponents):
             return self.opponents[index]
         return None
     
