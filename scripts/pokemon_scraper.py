@@ -19,49 +19,65 @@ from pathlib import Path
 # CONSTANTS
 # =============================================================================
 
-# Base directory (script is in scripts/, project root is parent)
 BASE_DIR = Path(__file__).parent.parent
-
 DATA_DIR = BASE_DIR / "data"
 SPRITES_DIR = BASE_DIR / "assets" / "sprites" / "pokemon"
 
-# List of 54 Pokemon IDs (18 types × 3 stages)
-# Classic Gen 1 IDs for simplicity
+# 18 types × 3 stages = 54 Pokémon
+# IDs Gen 1 (majorité) + quelques Gen 2/6 pour les types manquants
 POKEMON_IDS = [
-    # Grass
-    1, 2, 3,      # Bulbasaur, Ivysaur, Venusaur
-    # Fire
-    4, 5, 6,      # Charmander, Charmeleon, Charizard
-    # Water
-    7, 8, 9,      # Squirtle, Wartortle, Blastoise
-    # Normal
-    16, 17, 18,   # Pidgey, Pidgeotto, Pidgeot
-    # Electric
-    25, 26,       # Pikachu, Raichu (only 2 stages)
-    # Bug
-    10, 11, 12,   # Caterpie, Metapod, Butterfree
-    # Poison
-    13, 14, 15,   # Weedle, Kakuna, Beedrill
-    # Ground
-    50, 51, 52,   # Diglett, Dugtrio, ??? (using Meowth as placeholder)
-    # Rock
-    74, 75, 76,   # Geodude, Graveler, Golem
-    # Fighting
-    66, 67, 68,   # Machop, Machoke, Machamp
-    # Psychic
-    63, 64, 65,   # Abra, Kadabra, Alakazam
-    # Ghost
-    92, 93, 94,   # Gastly, Haunter, Gengar
-    # Ice
-    86, 87,       # Seel, Dewgong (only 2 stages)
-    # Dragon
+    # Normal (3)
+    16, 17, 18,    # Pidgey, Pidgeotto, Pidgeot
+    
+    # Fire (3)
+    4, 5, 6,       # Charmander, Charmeleon, Charizard
+    
+    # Water (3)
+    7, 8, 9,       # Squirtle, Wartortle, Blastoise
+    
+    # Grass (3)
+    1, 2, 3,       # Bulbasaur, Ivysaur, Venusaur
+    
+    # Electric (2)
+    25, 26,        # Pikachu, Raichu
+    
+    # Ice (2)
+    86, 87,        # Seel, Dewgong
+    
+    # Fighting (3)
+    66, 67, 68,    # Machop, Machoke, Machamp
+    
+    # Poison (3)
+    13, 14, 15,    # Weedle, Kakuna, Beedrill
+    
+    # Ground (3)
+    50, 51, 28,    # Diglett, Dugtrio, Sandslash (pour 3e)
+    
+    # Flying (3) - inclus dans Normal/Pidgey
+    
+    # Psychic (3)
+    63, 64, 65,    # Abra, Kadabra, Alakazam
+    
+    # Bug (3)
+    10, 11, 12,    # Caterpie, Metapod, Butterfree
+    
+    # Rock (3)
+    74, 75, 76,    # Geodude, Graveler, Golem
+    
+    # Ghost (3)
+    92, 93, 94,    # Gastly, Haunter, Gengar
+    
+    # Dragon (3)
     147, 148, 149, # Dratini, Dragonair, Dragonite
-    # Dark (use Gen 2)
-    197,          # Umbreon (placeholder)
-    # Steel (use Gen 2)
-    208,          # Steelix (placeholder)
-    # Fairy (use Gen 6)
-    700,          # Sylveon (placeholder)
+    
+    # Dark (3) - Gen 2
+    197, 198, 215, # Umbreon, Murkrow, Sneasel
+    
+    # Steel (3) - Gen 2
+    208, 212, 227, # Steelix, Scizor, Skarmory
+    
+    # Fairy (3) - Gen 6
+    700, 702, 707  # Sylveon, Dedenne, Klefki
 ]
 
 # Type to day/night mapping
@@ -86,23 +102,60 @@ TYPE_DAY_NIGHT = {
     "poison": "nocturne"
 }
 
-# Humorous names (to be filled by creative team)
-# Placeholders for now
+# Humorous names (IA/La Plateforme theme)
 HUMOROUS_NAMES = {
-    1: "BulbyLePlanteur",
-    2: "HerbizarreDeLaMort",
-    3: "FlorizarreMax",
-    4: "SalamècheLeCodeur",
-    5: "ReptincelEnRage",
-    6: "DracaufeuDesSGBD",
-    7: "CarapuceLaPotion",
-    8: "TortankLeNull",
-    9: "AquaBug",
-    # ... to be completed
+    1: "BulbIAGenerator",
+    2: "HerbiClassifieur",
+    3: "FloriReseauNeuronal",
+    4: "PyTorch",
+    5: "TensorFlow",
+    6: "Keras",
+    7: "DataLoader",
+    8: "DataFrame",
+    9: "DataPipeline",
+    10: "Overfit",
+    11: "Underfit",
+    12: "Bias",
+    13: "Backprop",
+    14: "Gradient",
+    15: "Descente",
+    16: "PromptMaster",
+    17: "ContextWindow",
+    18: "Token",
+    25: "PikaChatGPT",
+    26: "RaichuGPT4",
+    28: "Sandslash",
+    50: "Diglett",
+    51: "Dugtrio",
+    63: "Abra",
+    64: "Kadabra",
+    65: "Alakazam",
+    66: "Machop",
+    67: "Machoke",
+    68: "Machamp",
+    74: "Geodude",
+    75: "Graveler",
+    76: "Golem",
+    86: "Seel",
+    87: "Dewgong",
+    92: "Gastly",
+    93: "Haunter",
+    94: "Gengar",
+    147: "Dratini",
+    148: "Dragonair",
+    149: "Dragonite",
+    197: "Umbreon",
+    198: "Murkrow",
+    208: "Steelix",
+    212: "Scizor",
+    215: "Sneasel",
+    227: "Skarmory",
+    700: "Sylveon",
+    702: "Dedenne",
+    707: "Klefki"
 }
 
-# Request delay to avoid rate limiting
-REQUEST_DELAY = 0.5  # 500ms
+REQUEST_DELAY = 0.5
 
 
 # =============================================================================
@@ -235,6 +288,9 @@ def build_pokemon_data(raw_data):
     stage = 1
     if evolution and evolution["to"] < pokemon_id:
         stage = 2
+        if evolution["to"] < pokemon_id:
+            # We assume 3-stage evolutions go up
+            stage = 3 if pokemon_id > evolution["to"] else 2
     
     # Sprites
     sprites_data = raw_data["sprites"]
@@ -268,7 +324,7 @@ def build_pokemon_data(raw_data):
         "base_stats": stats,
         "evolution": evolution,
         "day_night": day_night,
-        "stage": stage,
+        "evolution_stage": stage,
         "sprite_front": f"assets/sprites/pokemon/{pokemon_id}_front.png",
         "sprite_back": f"assets/sprites/pokemon/{pokemon_id}_back.png",
         "all_attacks": attacks
@@ -311,7 +367,8 @@ def download_all_sprites(pokemon_list):
 
 def main():
     """Main scraping function."""
-    print("Starting PokéAPI scraping...")
+    print(" Starting PokéAPI scraping...")
+    print(f" Will fetch {len(POKEMON_IDS)} Pokemon")
     
     # Create directories
     if not os.path.exists(DATA_DIR):
@@ -326,7 +383,7 @@ def main():
     total = len(POKEMON_IDS)
     
     for i, pokemon_id in enumerate(POKEMON_IDS):
-        print(f"Fetching {i+1}/{total}: Pokemon #{pokemon_id}")
+        print(f"📥 Fetching {i+1}/{total}: Pokemon #{pokemon_id}")
         
         raw_data = fetch_pokemon_data(pokemon_id)
         
@@ -343,14 +400,19 @@ def main():
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(pokemon_data, f, indent=2, ensure_ascii=False)
     
-    print(f"JSON file generated: {json_path}")
+    print(f" JSON file generated: {json_path}")
+    print(f" {len(pokemon_data)} Pokemon saved")
     
     # Download sprites
-    print("Downloading sprites...")
+    print(" Downloading sprites...")
     sprite_count = download_all_sprites(pokemon_data)
-    print(f"Downloaded {sprite_count} sprites")
+    print(f" Downloaded {sprite_count} sprites")
     
-    print("Scraping complete!")
+    print("\n Scraping complete!")
+    print("\n Next steps:")
+    print("1. Edit data/pokemon.json to adjust humorous names")
+    print("2. Check that all sprites are present")
+    print("3. Commit both files to Git")
 
 
 # =============================================================================
@@ -359,21 +421,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-# =============================================================================
-# POST-SCRAPING NOTES
-# =============================================================================
-#
-# After running this script:
-#
-# 1. Edit data/pokemon.json manually to:
-#    - Replace "name_custom" with real humorous names
-#    - Adjust "day_night" if needed (some Pokemon may be mixed)
-#    - Verify evolutions (API may give incomplete info)
-#
-# 2. Check that all sprites are present
-#    (some Pokemon may not have back sprites in API)
-#
-# 3. Commit the JSON file and sprites to Git
-#    (so the whole team has the same base)
