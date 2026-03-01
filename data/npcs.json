@@ -1,0 +1,247 @@
+{
+  "professor_akram": {
+    "id": "professor_akram",
+    "type": "professor",
+    "name": "Akram",
+    "zone": "ecole",
+    "x": 608,
+    "y": 576,
+    "direction": "down",
+    "sprite": "assets/sprites/npcs/akram.png",
+    "dialogues": {
+      "first": [
+        "Tu tombes bien.",
+        "J'allais justement lancer un nouveau prompt.",
+        "...",
+        "Bon, choisis ton premier Pokémon.",
+        "Et essaie de pas le perdre tout de suite."
+      ],
+      "starter_chosen": [
+        "...",
+        "Intéressant.",
+        "Vérifie quand même la doc de temps en temps.",
+        "Les réponses sont sur Discord."
+      ],
+      "already_have_starter": [
+        "T'as déjà un Pokémon.",
+        "Pourquoi tu me parles ?",
+        "Va plutôt coder ta POO."
+      ]
+    }
+  },
+
+  "nurse_joy": {
+    "id": "nurse_joy",
+    "type": "nurse",
+    "name": "Infirmière",
+    "zone": "campus",
+    "x": 768,
+    "y": 288,
+    "direction": "down",
+    "sprite": "assets/sprites/npcs/nurse.png",
+    "dialogues": {
+      "before_heal": [
+        "Tes Pokémon ont pris cher...",
+        "On va arranger ça.",
+        "...",
+        "...",
+        "Voilà, c'est bon.",
+        "La prochaine fois, évite de les envoyer au combat avec 3 PV."
+      ],
+      "after_heal": [
+        "Ils sont en pleine forme.",
+        "Bon courage."
+      ]
+    }
+  },
+
+  "shopkeeper_linus": {
+    "id": "shopkeeper_linus",
+    "type": "shopkeeper",
+    "name": "Linus",
+    "zone": "campus",
+    "x": 896,
+    "y": 288,
+    "direction": "down",
+    "sprite": "assets/sprites/npcs/linus.png",
+    "dialogues": {
+      "welcome": [
+        "Salut.",
+        "J'ai des potions, des balls, des boosts...",
+        "Prends ce qu'il te faut."
+      ],
+      "no_money": [
+        "Pas assez de crédits.",
+        "Va défier quelques dresseurs, reviens après."
+      ],
+      "purchase": [
+        "Voilà.",
+        "Bonne chance pour la suite."
+      ]
+    }
+  },
+
+  "tournament_host": {
+    "id": "tournament_host",
+    "type": "tournament_host",
+    "name": "Organisateur",
+    "zone": "arena",
+    "x": 480,
+    "y": 256,
+    "direction": "down",
+    "sprite": "assets/sprites/npcs/host.png",
+    "dialogues": {
+      "first_meeting": [
+        "Bienvenue à l'Arena.",
+        "Le tournoi est ouvert à tous ceux qui ont 150 crédits.",
+        "Trois combats, pas de soin entre les rounds.",
+        "Prêt à tenter ta chance ?"
+      ],
+      "insufficient_credits": [
+        "Pas assez de crédits.",
+        "Il t'en faut 150 pour participer.",
+        "Reviens quand tu auras farmé un peu."
+      ],
+      "insufficient_team": [
+        "Ton équipe n'est pas en état de combattre.",
+        "Passe d'abord au Centre Pokémon."
+      ],
+      "already_in_progress": [
+        "Un tournoi est déjà en cours.",
+        "Tu ne peux pas t'inscrire maintenant."
+      ],
+      "register_confirm": [
+        "Inscription enregistrée.",
+        "150 crédits ont été déduits.",
+        "Que la force de l'IA soit avec toi."
+      ],
+      "already_registered": [
+        "Tu es déjà inscrit.",
+        "Le tournoi t'attend."
+      ]
+    }
+  },
+
+  "yassine_quest": {
+    "id": "yassine_quest",
+    "type": "quest",
+    "name": "Yassine",
+    "zone": "campus",
+    "x": 224,
+    "y": 448,
+    "direction": "down",
+    "sprite": "assets/sprites/npcs/yassine.png",
+    "quest_id": 1
+  },
+
+  "ancien_quest": {
+    "id": "ancien_quest",
+    "type": "quest",
+    "name": "Ancien",
+    "zone": "alentours",
+    "x": 576,
+    "y": 320,
+    "direction": "right",
+    "sprite": "assets/sprites/npcs/old_man.png",
+    "quest_id": 2
+  },
+
+  "mentor_quest": {
+    "id": "mentor_quest",
+    "type": "quest",
+    "name": "Mentor",
+    "zone": "alentours",
+    "x": 896,
+    "y": 512,
+    "direction": "left",
+    "sprite": "assets/sprites/npcs/mentor.png",
+    "quest_id": 3
+  },
+
+  "student_1": {
+    "id": "student_1",
+    "type": "ambient",
+    "name": "Kévin",
+    "zone": "campus",
+    "x": 640,
+    "y": 416,
+    "direction": "right",
+    "sprite": "assets/sprites/npcs/student_m.png",
+    "dialogues": {
+      "random": [
+        ["Mon code compile pas...", "Ah mais c'est bon, j'avais oublié un print."],
+        ["J'ai demandé à l'IA de générer mon équipe.", "Elle m'a mis 6 Pokémon feu.", "Pas con."],
+        ["Le wifi rame depuis ce matin.", "Y'a un type qui doit entraîner son Porygon."]
+      ]
+    }
+  },
+
+  "student_2": {
+    "id": "student_2",
+    "type": "ambient",
+    "name": "Léa",
+    "zone": "campus",
+    "x": 352,
+    "y": 544,
+    "direction": "up",
+    "sprite": "assets/sprites/npcs/student_f.png",
+    "dialogues": {
+      "random": [
+        ["J'ai passé la nuit sur un bug.", "C'était un point-virgule. En Python.", "Oui je sais."],
+        ["L'IA m'a dit de mettre un type Eau dans mon équipe.", "J'ai pris Magicarpe.", "Ça craint."],
+        ["Mon modèle overfit...", "Comme mon équipe contre un dresseur B3."]
+      ]
+    }
+  },
+
+  "student_3": {
+    "id": "student_3",
+    "type": "ambient",
+    "name": "Lucas",
+    "zone": "campus",
+    "x": 384,
+    "y": 192,
+    "direction": "left",
+    "sprite": "assets/sprites/npcs/student_m.png",
+    "dialogues": {
+      "random": [
+        ["La machine à café est en panne.", "Journée de merde en perspective."],
+        ["J'ai demandé à ChatGPT de me faire une stratégie.", "Il m'a conseillé d'utiliser l'attaque 'Prompt'."]
+      ]
+    }
+  },
+
+  "student_4": {
+    "id": "student_4",
+    "type": "ambient",
+    "name": "Chloé",
+    "zone": "campus",
+    "x": 480,
+    "y": 256,
+    "direction": "down",
+    "sprite": "assets/sprites/npcs/student_f.png",
+    "dialogues": {
+      "random": [
+        ["Soutenance dans 2h.", "Projet pas fini.", "On va improviser avec l'IA."],
+        ["Le jury il pose des questions ?", "Ou il juge en silence ?", "Les deux en fait."]
+      ]
+    }
+  },
+
+  "student_5": {
+    "id": "student_5",
+    "type": "ambient",
+    "name": "Mehdi",
+    "zone": "campus",
+    "x": 768,
+    "y": 512,
+    "direction": "up",
+    "sprite": "assets/sprites/npcs/student_m.png",
+    "dialogues": {
+      "random": [
+        ["J'ai demandé à l'IA de coder mon combat.", "Elle a fui au premier tour."],
+        ["Les données sont sales.", "Comme mon équipe après un combat contre un type Plante."]
+      ]
+    }
+  }
+}
