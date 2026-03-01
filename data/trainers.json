@@ -1,0 +1,212 @@
+[
+  {
+    "id": 1,
+    "type": "trainer",
+    "name": "LeDébutant",
+    "zone": "campus",
+    "x": 512,
+    "y": 960,
+    "direction": "down",
+    "battle_level": "B1",
+    "reward_credits": 20,
+    "vision_range": 3,
+    "team": [
+      {"pokemon_id": 1, "level": 8}
+    ],
+    "dialogues": {
+      "challenge": ["Attends je check ChatGPT...", "ah il dit que je vais perdre"],
+      "defeat": ["Bon en vrai j'avais pas lu la doc"],
+      "already_beaten": ["J'ai demandé à l'IA de me venger, elle a dit non"]
+    }
+  },
+  {
+    "id": 2,
+    "type": "trainer",
+    "name": "Prompteur",
+    "zone": "campus",
+    "x": 160,
+    "y": 160,
+    "direction": "down",
+    "battle_level": "B1",
+    "reward_credits": 20,
+    "vision_range": 3,
+    "team": [
+      {"pokemon_id": 4, "level": 8}
+    ],
+    "dialogues": {
+      "challenge": ["Génère-moi une stratégie...", "merde c'est en anglais"],
+      "defeat": ["J'ai demandé à l'IA de jouer à ma place, elle a fui"],
+      "already_beaten": ["J'ai 3 prompts et toujours aucune idée"]
+    }
+  },
+  {
+    "id": 3,
+    "type": "trainer",
+    "name": "StackOverflow",
+    "zone": "campus",
+    "x": 896,
+    "y": 1152,
+    "direction": "down",
+    "battle_level": "B2",
+    "reward_credits": 30,
+    "vision_range": 3,
+    "team": [
+      {"pokemon_id": 7, "level": 12},
+      {"pokemon_id": 25, "level": 10}
+    ],
+    "dialogues": {
+      "challenge": ["J'ai copié la team d'un mec en 2012", "il avait 2 upvotes"],
+      "defeat": ["La réponse acceptée était pas la bonne"],
+      "already_beaten": ["Je vais poser la question, on verra"]
+    }
+  },
+  {
+    "id": 4,
+    "type": "trainer",
+    "name": "GitPushForce",
+    "zone": "alentours",
+    "x": 640,
+    "y": 512,
+    "direction": "down",
+    "battle_level": "B2",
+    "reward_credits": 30,
+    "vision_range": 3,
+    "team": [
+      {"pokemon_id": 66, "level": 14},
+      {"pokemon_id": 74, "level": 13}
+    ],
+    "dialogues": {
+      "challenge": ["J'ai push ma team en prod vendredi 16h58", "tranquille"],
+      "defeat": ["... j'avais pas fait de backup"],
+      "already_beaten": ["Je vais revert, attends 3 heures"]
+    }
+  },
+  {
+    "id": 5,
+    "type": "trainer",
+    "name": "LaVeille",
+    "zone": "alentours",
+    "x": 1024,
+    "y": 768,
+    "direction": "down",
+    "battle_level": "B2",
+    "reward_credits": 30,
+    "vision_range": 3,
+    "team": [
+      {"pokemon_id": 129, "level": 8},
+      {"pokemon_id": 118, "level": 15}
+    ],
+    "dialogues": {
+      "challenge": ["Ça fait 72h que je code", "je vois plus clair"],
+      "defeat": ["... je vais me coucher 3 jours"],
+      "already_beaten": ["Là j'ai dormi, mais ça va pas mieux"]
+    }
+  },
+  {
+    "id": 6,
+    "type": "trainer",
+    "name": "LeStagiaire",
+    "zone": "alentours",
+    "x": 1280,
+    "y": 896,
+    "direction": "down",
+    "battle_level": "B2",
+    "reward_credits": 30,
+    "vision_range": 3,
+    "team": [
+      {"pokemon_id": 33, "level": 16},
+      {"pokemon_id": 30, "level": 16}
+    ],
+    "dialogues": {
+      "challenge": ["Je suis là depuis 3 semaines", "je fais comme j'ai vu sur YouTube"],
+      "defeat": ["C'était pas moi, c'est l'autre"],
+      "already_beaten": ["Je vais demander au vrai dev"]
+    }
+  },
+  {
+    "id": 7,
+    "type": "trainer",
+    "name": "YassineLeRetour",
+    "zone": "arena",
+    "x": 480,
+    "y": 320,
+    "direction": "down",
+    "battle_level": "B3",
+    "reward_credits": 50,
+    "vision_range": 5,
+    "team": [
+      {"pokemon_id": 6, "level": 25},
+      {"pokemon_id": 9, "level": 25},
+      {"pokemon_id": 3, "level": 25},
+      {"pokemon_id": 94, "level": 24}
+    ],
+    "dialogues": {
+      "challenge": ["Je passe derrière toi", "et je vais tout casser"],
+      "defeat": ["Bon... celui-ci était pas mal", "mais j'ai vu une virgule en trop"],
+      "already_beaten": ["J'ai relu ton code, t'as de la chance"]
+    }
+  },
+  {
+    "id": 8,
+    "type": "trainer",
+    "name": "ProdMaker",
+    "zone": "arena",
+    "x": 480,
+    "y": 480,
+    "direction": "down",
+    "battle_level": "B3",
+    "reward_credits": 50,
+    "vision_range": 3,
+    "team": [
+      {"pokemon_id": 6, "level": 22},
+      {"pokemon_id": 9, "level": 22}
+    ],
+    "dialogues": {
+      "challenge": ["J'ai mis le jeu en ligne hier", "j'ai pas testé les combats"],
+      "defeat": ["Ah c'est pour ça que ça marchait pas"],
+      "already_beaten": ["Je vais rollback... ou pas"]
+    }
+  },
+  {
+    "id": 9,
+    "type": "trainer",
+    "name": "LeDaron",
+    "zone": "arena",
+    "x": 480,
+    "y": 640,
+    "direction": "down",
+    "battle_level": "B3",
+    "reward_credits": 50,
+    "vision_range": 3,
+    "team": [
+      {"pokemon_id": 3, "level": 23},
+      {"pokemon_id": 6, "level": 24},
+      {"pokemon_id": 9, "level": 22}
+    ],
+    "dialogues": {
+      "challenge": ["Moi à ton âge on codait en C", "sur des feuilles", "et on était contents"],
+      "defeat": ["Bon d'accord, t'es pas si nul"],
+      "already_beaten": ["Les jeunes avec leurs Pokémons en ligne..."]
+    }
+  },
+  {
+    "id": 10,
+    "type": "professor",
+    "name": "Akram",
+    "zone": "ecole",
+    "x": 608,
+    "y": 576,
+    "direction": "down",
+    "battle_level": "B3",
+    "reward_credits": 0,
+    "vision_range": 5,
+    "team": [
+      {"pokemon_id": 150, "level": 99}
+    ],
+    "dialogues": {
+      "challenge": ["J'ai vu ton dernier commit...", "c'était y a 3 semaines"],
+      "defeat": ["Pas mal... pour quelqu'un qui code avec l'IA"],
+      "already_beaten": ["T'as utilisé quel prompt ?"]
+    }
+  }
+]
