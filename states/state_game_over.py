@@ -34,11 +34,18 @@ class StateGameOver(State):
     # CONSTRUCTOR
     # -------------------------------------------------------------------------
     
-    def __init__(self, game_manager):
-        """Initialize game over state."""
+    def __init__(self, game_manager, victory=True):
+        """
+        Initialize game over state.
+        
+        Args:
+            game_manager: reference to Game
+            victory: True for victory screen, False for defeat (not used yet)
+        """
         super().__init__(game_manager)
         
         self.player = game_manager.player
+        self.victory = victory
         
         # --- FONTS ---
         self.font_title = pygame.font.Font(None, 46)
