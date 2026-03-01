@@ -132,8 +132,10 @@
     "y": 320,
     "direction": "down",
     "battle_level": "B3",
-    "reward_credits": 50,
+    "reward_credits": 0,
     "vision_range": 5,
+    "is_tournament": true,
+    "tournament_round": 3,
     "team": [
       {"pokemon_id": 6, "level": 25},
       {"pokemon_id": 9, "level": 25},
@@ -155,8 +157,10 @@
     "y": 480,
     "direction": "down",
     "battle_level": "B3",
-    "reward_credits": 50,
+    "reward_credits": 0,
     "vision_range": 3,
+    "is_tournament": true,
+    "tournament_round": 1,
     "team": [
       {"pokemon_id": 6, "level": 22},
       {"pokemon_id": 9, "level": 22}
@@ -176,8 +180,10 @@
     "y": 640,
     "direction": "down",
     "battle_level": "B3",
-    "reward_credits": 50,
+    "reward_credits": 0,
     "vision_range": 3,
+    "is_tournament": true,
+    "tournament_round": 2,
     "team": [
       {"pokemon_id": 3, "level": 23},
       {"pokemon_id": 6, "level": 24},
