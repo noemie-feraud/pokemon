@@ -1,0 +1,97 @@
+[
+  {
+    "id": 1,
+    "npc_id": "yassine_quest",
+    "title": "Capture aquatique",
+    "description": "Capture 3 Pokémon de type Eau",
+    "type": "capture_type",
+    "target_type": "eau",
+    "target_count": 3,
+    "reward": {
+      "type": "credits",
+      "amount": 50
+    },
+    "dialogues": {
+      "propose": [
+        "T'as besoin de t'entraîner.",
+        "Capture 3 Pokémon Eau.",
+        "On verra après."
+      ],
+      "active": [
+        "Alors, t'en es où ?",
+        "{progress} capturés."
+      ],
+      "complete": [
+        "Ok c'est bon.",
+        "Tiens, tes crédits."
+      ],
+      "done": [
+        "T'as déjà eu ta récompense.",
+        "Continue."
+      ]
+    }
+  },
+  {
+    "id": 2,
+    "npc_id": "ancien_quest",
+    "title": "Entraînement intensif",
+    "description": "Monter un Pokémon au niveau 20",
+    "type": "level_up",
+    "target_level": 20,
+    "reward": {
+      "type": "credits",
+      "amount": 75
+    },
+    "dialogues": {
+      "propose": [
+        "Moi aussi j'ai codé à l'époque.",
+        "En Fortran. On rigolait pas.",
+        "Monte un Pokémon niveau 20.",
+        "Ça te fera du bien."
+      ],
+      "active": [
+        "T'en es où niveau ?",
+        "Niveau {progress}."
+      ],
+      "complete": [
+        "Pas mal.",
+        "Tiens, pour l'effort."
+      ],
+      "done": [
+        "C'est déjà fait.",
+        "Continue."
+      ]
+    }
+  },
+  {
+    "id": 3,
+    "npc_id": "mentor_quest",
+    "title": "Domination",
+    "description": "Battre 5 dresseurs",
+    "type": "defeat_trainers",
+    "target_count": 5,
+    "reward": {
+      "type": "credits",
+      "amount": 100
+    },
+    "dialogues": {
+      "propose": [
+        "Yo.",
+        "Bats 5 dresseurs.",
+        "Ils sont pas ouf, ça devrait le faire."
+      ],
+      "active": [
+        "T'as battu qui ?",
+        "{progress} / {target}."
+      ],
+      "complete": [
+        "Bien joué.",
+        "Crédits, comme promis."
+      ],
+      "done": [
+        "C'est fait.",
+        "Bye."
+      ]
+    }
+  }
+]
