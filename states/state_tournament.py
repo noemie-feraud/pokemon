@@ -86,7 +86,7 @@ class StateTournament(State):
         Returns:
             list of Trainer instances
         """
-        from entities.trainer import Trainer
+        from entities.npc_trainer import Trainer
         
         # In real implementation, this would load from a JSON file
         # Here we create placeholder opponents with generated teams
