@@ -91,8 +91,8 @@ class StateDialogue(State):
         Either skip typewriter, go to next page, or end dialogue.
         """
         result = self.dialogue_box.advance()
-        
-        if result == "finished":
+
+        if result:
             self._end_dialogue()
     
     
@@ -127,10 +127,7 @@ class StateDialogue(State):
         # 2. Execute callback if present
         if self.callback is not None:
             try:
-                self.callback(
-                    self.game_manager.player,
-                    self.game_manager
-                )
+                self.callback(self.game_manager)
             except Exception as e:
                 print(f"Error in dialogue callback: {e}")
     

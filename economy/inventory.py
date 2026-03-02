@@ -6,7 +6,7 @@
 # Stores {item_id: quantity} internally.
 # Accesses ItemCatalog for item details.
 
-from entities.item import ItemCatalog
+from economy.item import ItemCatalog
 
 
 # =============================================================================

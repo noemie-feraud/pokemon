@@ -146,8 +146,8 @@ class SaveManager:
                     if poke.get("level", 0) > max_level:
                         max_level = poke["level"]
                 
-                # Format play time
-                time_seconds = data.get("play_time", 0)
+                # Format play time (play_time is a float, cast to int first)
+                time_seconds = int(data.get("play_time", 0))
                 hours = time_seconds // 3600
                 minutes = (time_seconds % 3600) // 60
                 

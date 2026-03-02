@@ -6,7 +6,7 @@
 # Handles: position, sprite, direction, dialogue, interaction.
 
 import pygame
-from config.settings import TILE_SIZE, NPC_SPRITES_DIR
+from config.settings import TILE_SIZE, NPC_SPRITES_DIR, PROJECT_ROOT
 
 
 # =============================================================================
@@ -53,10 +53,10 @@ class NPC:
         # Child classes may have other keys ("after", "quest_active", etc.)
         self.dialogues = data.get("dialogues", {"default": ["..."]})
         
-        # --- SPRITE ---
-        self.sprite = None
-        self._load_sprite(data)
-        
+        # --- SPRITES (directional, same pattern as player) ---
+        self.sprites = {}
+        self._load_sprites(data)
+
         # --- INTERACTION FLAG ---
         # Some NPCs are only interactive once.
         # Default: everyone is re-interactive.
@@ -67,17 +67,67 @@ class NPC:
     # PRIVATE METHODS
     # -------------------------------------------------------------------------
     
-    def _load_sprite(self, data):
-        """Load NPC sprite from assets."""
-        sprite_path = data.get("sprite", None)
-        
-        if sprite_path and self._file_exists(sprite_path):
-            try:
-                self.sprite = pygame.image.load(sprite_path).convert_alpha()
-            except Exception:
-                self.sprite = self._create_placeholder()
-        else:
-            self.sprite = self._create_placeholder()
+    def _crop_sprite(self, img):
+        """Crop transparent borders — same as player.py."""
+        bbox = img.get_bounding_rect()
+        if bbox.width == 0 or bbox.height == 0:
+            return img
+        cropped = pygame.Surface((bbox.width, bbox.height), pygame.SRCALPHA)
+        cropped.blit(img, (0, 0), bbox)
+        return cropped
+
+    def _load_sprites(self, data):
+        """Load directional sprites — same pattern as player, but from NPC_SPRITES_DIR.
+
+        Two cases:
+        - sprite = prefix (e.g. "f3_jade")   → loads prefix_front/back/left/right.png
+        - sprite = full path (ends with .png) → single image used for all directions
+        """
+        sprite_val = data.get("sprite", None)
+
+        if not sprite_val:
+            for d in ("down", "up", "left", "right"):
+                self.sprites[d] = self._create_placeholder()
+            return
+
+        # Single-file sprite (full path ending in .png)
+        if sprite_val.endswith(".png"):
+            full_path = PROJECT_ROOT / sprite_val
+            img = None
+            if full_path.exists():
+                try:
+                    img = self._crop_sprite(pygame.image.load(str(full_path)).convert_alpha())
+                except Exception:
+                    pass
+            for d in ("down", "up", "left", "right"):
+                self.sprites[d] = img if img else self._create_placeholder()
+            return
+
+        # Prefix-based directional sprites
+        dir_files = {
+            "down":  f"{sprite_val}_front.png",
+            "up":    f"{sprite_val}_back.png",
+            "left":  f"{sprite_val}_left.png",
+            "right": f"{sprite_val}_right.png",
+        }
+        for direction, filename in dir_files.items():
+            path = NPC_SPRITES_DIR / filename
+            if path.exists():
+                try:
+                    img = pygame.image.load(str(path)).convert_alpha()
+                    self.sprites[direction] = self._crop_sprite(img)
+                    continue
+                except Exception:
+                    pass
+            self.sprites[direction] = None  # resolved after loop
+
+        # Fallback: missing directions use the front sprite, then placeholder
+        fallback = self.sprites.get("down") or next(
+            (s for s in self.sprites.values() if s is not None), None
+        )
+        for d in ("down", "up", "left", "right"):
+            if self.sprites.get(d) is None:
+                self.sprites[d] = fallback if fallback else self._create_placeholder()
     
     
     def _create_placeholder(self):
@@ -98,8 +148,7 @@ class NPC:
     
     def _file_exists(self, path):
         """Check if a file exists."""
-        import os
-        return os.path.exists(path)
+        return (PROJECT_ROOT / path).exists()
     
     
     # -------------------------------------------------------------------------
@@ -191,11 +240,12 @@ class NPC:
             screen: Pygame surface
             camera: Camera object for world→screen conversion
         """
-        if self.sprite is None:
+        sprite = self.sprites.get(self.direction) or self.sprites.get("down")
+        if sprite is None:
             return
-        
+
         screen_x, screen_y = camera.apply(self.x, self.y)
-        screen.blit(self.sprite, (screen_x, screen_y))
+        screen.blit(sprite, (screen_x, screen_y))
     
     
     def get_collision_rect(self):

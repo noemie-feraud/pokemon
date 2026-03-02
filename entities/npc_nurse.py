@@ -58,39 +58,33 @@ class NPCNurse(NPC):
         return self.dialogues.get("default", ["Welcome to the Pokemon Center!"])
     
     
+    def on_interact(self, game_manager):
+        """Reset healed flag at the start of each fresh interaction."""
+        self.has_healed = False
+        super().on_interact(game_manager)
+
     def on_dialogue_end(self, game_manager):
         """
-        Called when "default" dialogue ends.
-        This is where the healing happens.
-        
-        Steps:
-        1. Heal player's entire team
-        2. Play heal sound
-        3. Set has_healed flag to True
-        4. Start "after" dialogue (second StateDialogue)
+        Called when default dialogue ends.
+        Heals the team then shows a confirmation dialogue (no further callback).
         """
-        # If we came from "after" dialogue, do nothing
         if self.has_healed:
             return
-        
-        # Heal entire team
+
         game_manager.player.team.heal_all()
-        
-        # Play heal sound
         game_manager.audio_manager.play_sfx("heal")
-        
-        # Mark that we healed
         self.has_healed = True
-        
-        # Start "after" dialogue
-        after_lines = self.get_dialogue()
-        
+
+        after_lines = self.dialogues.get(
+            "after", ["Vos Pokémon sont complètement rétablis !"]
+        )
+
         from states.state_dialogue import StateDialogue
-        
+
         dialogue_state = StateDialogue(
             game_manager,
             after_lines,
             npc=self,
-            callback=self.on_dialogue_end
+            callback=None   # stops the loop
         )
         game_manager.state_manager.push(dialogue_state)

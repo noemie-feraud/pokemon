@@ -29,7 +29,16 @@ class NPCShopkeeper(NPC):
             data: dict from npcs.json
         """
         super().__init__(data)
-        # No additional attributes needed
+
+        # If no "talk" dialogue in data, load from SHOPKEEPER_DIALOGUES
+        if "talk" not in self.dialogues:
+            try:
+                from data.trainer_dialogues import SHOPKEEPER_DIALOGUES
+                shop_dlg = SHOPKEEPER_DIALOGUES.get(self.name)
+                if shop_dlg:
+                    self.dialogues.update(shop_dlg)
+            except Exception:
+                pass
     
     
     # -------------------------------------------------------------------------

@@ -2,6 +2,7 @@
   "professor_akram": {
     "id": "professor_akram",
     "type": "professor",
+    "gives_starter": true,
     "name": "Akram",
     "zone": "ecole",
     "x": 608,
@@ -25,7 +26,28 @@
       "already_have_starter": [
         "T'as déjà un Pokémon.",
         "Pourquoi tu me parles ?",
-        "Va plutôt coder ta POO."
+        "Va t'entraîner.",
+        "Ah, et évite de demander à ChatGPT de gérer tes combats.",
+        "Il va halluciner des attaques qui existent pas."
+      ],
+      "after_starter": [
+        "Excellent choix.",
+        "Prends-en soin.",
+        "Et va t'entraîner — le tournoi de l'arène n'attend personne."
+      ],
+      "talk": [
+        "Tu veux qu'on discute ?",
+        "Bon.",
+        "Ici à La Plateforme, on forme les dresseurs de demain.",
+        "IA/DATA, Cyber, Web, JVSI, Logiciel...",
+        "Chaque filière a son type Pokémon favori.",
+        "Les Cyber adorent les types Spectre — invisibles, insaisissables.",
+        "Les Web prennent toujours des types Normal — beaux mais fragiles.",
+        "Les JVSI partent sur des types Feu — flashy, mais ils burnout vite.",
+        "Le Logiciel ? Types Acier. Solides mais lents.",
+        "Et nous, IA/DATA ? Types Psy.",
+        "On voit ce que les autres voient pas.",
+        "C'est pour ça qu'on va gagner ce tournoi."
       ]
     }
   },
@@ -44,13 +66,31 @@
         "Tes Pokémon ont pris cher...",
         "On va arranger ça.",
         "...",
-        "...",
         "Voilà, c'est bon.",
-        "La prochaine fois, évite de les envoyer au combat avec 3 PV."
+        "La prochaine fois, évite de les envoyer au combat avec 3 PV.",
+        "Même les étudiants du Logiciel font des sauvegardes, toi t'as des potions."
       ],
       "after_heal": [
         "Ils sont en pleine forme.",
-        "Bon courage."
+        "Tu sais, j'ai soigné des Pokémon de toutes les filières.",
+        "Les Cyber arrivent toujours avec des Pokémon empoisonnés.",
+        "Les Web arrivent avec des Pokémon qui ont l'air bien mais qui tombent au premier coup.",
+        "Toi, t'es en IA/DATA — tu arrives à l'arrache mais ça tient.",
+        "Bon courage pour le tournoi !"
+      ],
+      "talk": [
+        "Tu veux juste discuter ? Ça change.",
+        "D'habitude les gens viennent ici avec des Pokémon à moitié morts.",
+        "Tu sais quelle filière arrive le plus souvent ?",
+        "Le Cyber.",
+        "Leurs Pokémon sont toujours empoisonnés ou paralysés.",
+        "Ils testent tout en prod, y compris les combats.",
+        "Le Web arrive avec des équipes 'responsive' — belles sur l'écran de sélection,",
+        "mais le premier vrai combat et tout s'effondre.",
+        "Et le Logiciel... ils arrivent avec un Pokémon.",
+        "Un seul.",
+        "Ils ont passé 3 semaines à l'optimiser dans tous les sens.",
+        "Toi t'es en IA/DATA, vas-y et gagne ce tournoi."
       ]
     }
   },
@@ -68,15 +108,37 @@
       "welcome": [
         "Salut.",
         "J'ai des potions, des balls, des boosts...",
-        "Prends ce qu'il te faut."
+        "Les Cyber achètent surtout des fumigènes pour fuir.",
+        "Les Web achètent des potions mais les utilisent jamais — 'pour le style'.",
+        "Toi t'es en IA/DATA, prends ce qu'il faut et optimise tes ressources."
       ],
       "no_money": [
         "Pas assez de crédits.",
-        "Va défier quelques dresseurs, reviens après."
+        "Il t'en faut plus.",
+        "Va défier quelques dresseurs, reviens après.",
+        "Et non, Claude peut pas te générer des crédits."
       ],
       "purchase": [
         "Voilà.",
-        "Bonne chance pour la suite."
+        "Bonne chance pour la suite.",
+        "Si tu vas au tournoi, souviens-toi :",
+        "les potions c'est bien, mais une bonne stratégie c'est mieux.",
+        "...J'aurais dû vendre des stratégies aussi."
+      ],
+      "talk": [
+        "T'as pas envie d'acheter quelque chose ?",
+        "Non ?",
+        "Bon.",
+        "Tu veux savoir d'où viennent mes stocks ?",
+        "Les étudiants Logiciel me revendent leurs potions inutilisées.",
+        "Ils préfèrent tout régler en surcharge de méthodes Java.",
+        "Les Cyber me donnent des balls qu'ils ont 'trouvées'.",
+        "Je pose pas de questions.",
+        "Et les Web... les Web m'ont proposé de refaire ma boutique en Next.js.",
+        "J'ai dit non.",
+        "J'ai un comptoir et des étagères. Ça suffit.",
+        "Toi en IA/DATA t'es le seul qui optimise vraiment ses achats.",
+        "Continue comme ça."
       ]
     }
   },
@@ -92,32 +154,42 @@
     "sprite": "assets/sprites/npcs/host.png",
     "dialogues": {
       "first_meeting": [
-        "Bienvenue à l'Arena.",
-        "Le tournoi est ouvert à tous ceux qui ont 150 crédits.",
-        "Trois combats, pas de soin entre les rounds.",
+        "Bienvenue à l'Arena de La Plateforme.",
+        "Le tournoi annuel est l'épreuve ultime.",
+        "Le gagnant repart avec une alternance garantie.",
+        "Trois combats. Pas de soin entre les rounds.",
+        "Des étudiants de toutes les filières participent.",
+        "Cyber, Web, JVSI, Logiciel... et IA/DATA.",
+        "Il t'en faut 150 crédits pour t'inscrire.",
         "Prêt à tenter ta chance ?"
       ],
       "insufficient_credits": [
         "Pas assez de crédits.",
         "Il t'en faut 150 pour participer.",
-        "Reviens quand tu auras farmé un peu."
+        "Va défier quelques dresseurs sur le campus.",
+        "Reviens quand t'as farmé suffisamment."
       ],
       "insufficient_team": [
         "Ton équipe n'est pas en état de combattre.",
-        "Passe d'abord au Centre Pokémon."
+        "Passe d'abord au Centre Pokémon.",
+        "Tu peux pas te pointer à la finale avec des Pokémon KO.",
+        "Même le JVSI le sait."
       ],
       "already_in_progress": [
         "Un tournoi est déjà en cours.",
-        "Tu ne peux pas t'inscrire maintenant."
+        "Tu ne peux pas t'inscrire maintenant.",
+        "Concentre-toi sur les prochains rounds."
       ],
       "register_confirm": [
         "Inscription enregistrée.",
         "150 crédits ont été déduits.",
-        "Que la force de l'IA soit avec toi."
+        "Que la force de l'IA soit avec toi.",
+        "Et pas celle de GPT-4. La vraie."
       ],
       "already_registered": [
         "Tu es déjà inscrit.",
-        "Le tournoi t'attend."
+        "Le tournoi t'attend.",
+        "Va pas demander à Copilot de jouer à ta place."
       ]
     }
   },
@@ -156,92 +228,5 @@
     "direction": "left",
     "sprite": "assets/sprites/npcs/mentor.png",
     "quest_id": 3
-  },
-
-  "student_1": {
-    "id": "student_1",
-    "type": "ambient",
-    "name": "Kévin",
-    "zone": "campus",
-    "x": 640,
-    "y": 416,
-    "direction": "right",
-    "sprite": "assets/sprites/npcs/student_m.png",
-    "dialogues": {
-      "random": [
-        ["Mon code compile pas...", "Ah mais c'est bon, j'avais oublié un print."],
-        ["J'ai demandé à l'IA de générer mon équipe.", "Elle m'a mis 6 Pokémon feu.", "Pas con."],
-        ["Le wifi rame depuis ce matin.", "Y'a un type qui doit entraîner son Porygon."]
-      ]
-    }
-  },
-
-  "student_2": {
-    "id": "student_2",
-    "type": "ambient",
-    "name": "Léa",
-    "zone": "campus",
-    "x": 352,
-    "y": 544,
-    "direction": "up",
-    "sprite": "assets/sprites/npcs/student_f.png",
-    "dialogues": {
-      "random": [
-        ["J'ai passé la nuit sur un bug.", "C'était un point-virgule. En Python.", "Oui je sais."],
-        ["L'IA m'a dit de mettre un type Eau dans mon équipe.", "J'ai pris Magicarpe.", "Ça craint."],
-        ["Mon modèle overfit...", "Comme mon équipe contre un dresseur B3."]
-      ]
-    }
-  },
-
-  "student_3": {
-    "id": "student_3",
-    "type": "ambient",
-    "name": "Lucas",
-    "zone": "campus",
-    "x": 384,
-    "y": 192,
-    "direction": "left",
-    "sprite": "assets/sprites/npcs/student_m.png",
-    "dialogues": {
-      "random": [
-        ["La machine à café est en panne.", "Journée de merde en perspective."],
-        ["J'ai demandé à ChatGPT de me faire une stratégie.", "Il m'a conseillé d'utiliser l'attaque 'Prompt'."]
-      ]
-    }
-  },
-
-  "student_4": {
-    "id": "student_4",
-    "type": "ambient",
-    "name": "Chloé",
-    "zone": "campus",
-    "x": 480,
-    "y": 256,
-    "direction": "down",
-    "sprite": "assets/sprites/npcs/student_f.png",
-    "dialogues": {
-      "random": [
-        ["Soutenance dans 2h.", "Projet pas fini.", "On va improviser avec l'IA."],
-        ["Le jury il pose des questions ?", "Ou il juge en silence ?", "Les deux en fait."]
-      ]
-    }
-  },
-
-  "student_5": {
-    "id": "student_5",
-    "type": "ambient",
-    "name": "Mehdi",
-    "zone": "campus",
-    "x": 768,
-    "y": 512,
-    "direction": "up",
-    "sprite": "assets/sprites/npcs/student_m.png",
-    "dialogues": {
-      "random": [
-        ["J'ai demandé à l'IA de coder mon combat.", "Elle a fui au premier tour."],
-        ["Les données sont sales.", "Comme mon équipe après un combat contre un type Plante."]
-      ]
-    }
   }
 }

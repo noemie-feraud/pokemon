@@ -1,0 +1,2591 @@
+[
+  {
+    "id": 16,
+    "name_original": "pidgey",
+    "name_custom": "PromptMaster",
+    "types": [
+      "normal",
+      "flying"
+    ],
+    "base_stats": {
+      "hp": 40,
+      "attack": 45,
+      "defense": 40
+    },
+    "evolution": {
+      "to": 17,
+      "level": 18
+    },
+    "day_night": "diurne",
+    "evolution_stage": 1,
+    "sprite_front": "assets/sprites/pokemon/16_front.png",
+    "sprite_back": "assets/sprites/pokemon/16_back.png",
+    "all_attacks": [
+      {
+        "name": "razor-wind",
+        "type": "normal",
+        "power": 80
+      },
+      {
+        "name": "gust",
+        "type": "flying",
+        "power": 40
+      },
+      {
+        "name": "wing-attack",
+        "type": "flying",
+        "power": 60
+      },
+      {
+        "name": "whirlwind",
+        "type": "normal",
+        "power": null
+      },
+      {
+        "name": "fly",
+        "type": "flying",
+        "power": 90
+      },
+      {
+        "name": "sand-attack",
+        "type": "ground",
+        "power": null
+      }
+    ]
+  },
+  {
+    "id": 17,
+    "name_original": "pidgeotto",
+    "name_custom": "ContextWindow",
+    "types": [
+      "normal",
+      "flying"
+    ],
+    "base_stats": {
+      "hp": 63,
+      "attack": 60,
+      "defense": 55
+    },
+    "evolution": {
+      "to": 17,
+      "level": 18
+    },
+    "day_night": "diurne",
+    "evolution_stage": 1,
+    "sprite_front": "assets/sprites/pokemon/17_front.png",
+    "sprite_back": "assets/sprites/pokemon/17_back.png",
+    "all_attacks": [
+      {
+        "name": "razor-wind",
+        "type": "normal",
+        "power": 80
+      },
+      {
+        "name": "gust",
+        "type": "flying",
+        "power": 40
+      },
+      {
+        "name": "wing-attack",
+        "type": "flying",
+        "power": 60
+      },
+      {
+        "name": "whirlwind",
+        "type": "normal",
+        "power": null
+      },
+      {
+        "name": "fly",
+        "type": "flying",
+        "power": 90
+      },
+      {
+        "name": "sand-attack",
+        "type": "ground",
+        "power": null
+      }
+    ]
+  },
+  {
+    "id": 18,
+    "name_original": "pidgeot",
+    "name_custom": "Token",
+    "types": [
+      "normal",
+      "flying"
+    ],
+    "base_stats": {
+      "hp": 83,
+      "attack": 80,
+      "defense": 75
+    },
+    "evolution": {
+      "to": 17,
+      "level": 18
+    },
+    "day_night": "diurne",
+    "evolution_stage": 3,
+    "sprite_front": "assets/sprites/pokemon/18_front.png",
+    "sprite_back": "assets/sprites/pokemon/18_back.png",
+    "all_attacks": [
+      {
+        "name": "razor-wind",
+        "type": "normal",
+        "power": 80
+      },
+      {
+        "name": "gust",
+        "type": "flying",
+        "power": 40
+      },
+      {
+        "name": "wing-attack",
+        "type": "flying",
+        "power": 60
+      },
+      {
+        "name": "whirlwind",
+        "type": "normal",
+        "power": null
+      },
+      {
+        "name": "fly",
+        "type": "flying",
+        "power": 90
+      },
+      {
+        "name": "sand-attack",
+        "type": "ground",
+        "power": null
+      }
+    ]
+  },
+  {
+    "id": 4,
+    "name_original": "charmander",
+    "name_custom": "PyTorch",
+    "types": [
+      "fire"
+    ],
+    "base_stats": {
+      "hp": 39,
+      "attack": 52,
+      "defense": 43
+    },
+    "evolution": {
+      "to": 5,
+      "level": 16
+    },
+    "day_night": "diurne",
+    "evolution_stage": 1,
+    "sprite_front": "assets/sprites/pokemon/4_front.png",
+    "sprite_back": "assets/sprites/pokemon/4_back.png",
+    "all_attacks": [
+      {
+        "name": "mega-punch",
+        "type": "normal",
+        "power": 80
+      },
+      {
+        "name": "fire-punch",
+        "type": "fire",
+        "power": 75
+      },
+      {
+        "name": "thunder-punch",
+        "type": "electric",
+        "power": 75
+      },
+      {
+        "name": "scratch",
+        "type": "normal",
+        "power": 40
+      },
+      {
+        "name": "swords-dance",
+        "type": "normal",
+        "power": null
+      },
+      {
+        "name": "cut",
+        "type": "normal",
+        "power": 50
+      }
+    ]
+  },
+  {
+    "id": 5,
+    "name_original": "charmeleon",
+    "name_custom": "TensorFlow",
+    "types": [
+      "fire"
+    ],
+    "base_stats": {
+      "hp": 58,
+      "attack": 64,
+      "defense": 58
+    },
+    "evolution": {
+      "to": 5,
+      "level": 16
+    },
+    "day_night": "diurne",
+    "evolution_stage": 1,
+    "sprite_front": "assets/sprites/pokemon/5_front.png",
+    "sprite_back": "assets/sprites/pokemon/5_back.png",
+    "all_attacks": [
+      {
+        "name": "mega-punch",
+        "type": "normal",
+        "power": 80
+      },
+      {
+        "name": "fire-punch",
+        "type": "fire",
+        "power": 75
+      },
+      {
+        "name": "thunder-punch",
+        "type": "electric",
+        "power": 75
+      },
+      {
+        "name": "scratch",
+        "type": "normal",
+        "power": 40
+      },
+      {
+        "name": "swords-dance",
+        "type": "normal",
+        "power": null
+      },
+      {
+        "name": "cut",
+        "type": "normal",
+        "power": 50
+      }
+    ]
+  },
+  {
+    "id": 6,
+    "name_original": "charizard",
+    "name_custom": "Keras",
+    "types": [
+      "fire",
+      "flying"
+    ],
+    "base_stats": {
+      "hp": 78,
+      "attack": 84,
+      "defense": 78
+    },
+    "evolution": {
+      "to": 5,
+      "level": 16
+    },
+    "day_night": "diurne",
+    "evolution_stage": 3,
+    "sprite_front": "assets/sprites/pokemon/6_front.png",
+    "sprite_back": "assets/sprites/pokemon/6_back.png",
+    "all_attacks": [
+      {
+        "name": "mega-punch",
+        "type": "normal",
+        "power": 80
+      },
+      {
+        "name": "fire-punch",
+        "type": "fire",
+        "power": 75
+      },
+      {
+        "name": "thunder-punch",
+        "type": "electric",
+        "power": 75
+      },
+      {
+        "name": "scratch",
+        "type": "normal",
+        "power": 40
+      },
+      {
+        "name": "swords-dance",
+        "type": "normal",
+        "power": null
+      },
+      {
+        "name": "cut",
+        "type": "normal",
+        "power": 50
+      }
+    ]
+  },
+  {
+    "id": 7,
+    "name_original": "squirtle",
+    "name_custom": "DataLoader",
+    "types": [
+      "water"
+    ],
+    "base_stats": {
+      "hp": 44,
+      "attack": 48,
+      "defense": 65
+    },
+    "evolution": {
+      "to": 8,
+      "level": 16
+    },
+    "day_night": "diurne",
+    "evolution_stage": 1,
+    "sprite_front": "assets/sprites/pokemon/7_front.png",
+    "sprite_back": "assets/sprites/pokemon/7_back.png",
+    "all_attacks": [
+      {
+        "name": "mega-punch",
+        "type": "normal",
+        "power": 80
+      },
+      {
+        "name": "ice-punch",
+        "type": "ice",
+        "power": 75
+      },
+      {
+        "name": "mega-kick",
+        "type": "normal",
+        "power": 120
+      },
+      {
+        "name": "headbutt",
+        "type": "normal",
+        "power": 70
+      },
+      {
+        "name": "tackle",
+        "type": "normal",
+        "power": 40
+      },
+      {
+        "name": "body-slam",
+        "type": "normal",
+        "power": 85
+      }
+    ]
+  },
+  {
+    "id": 8,
+    "name_original": "wartortle",
+    "name_custom": "DataFrame",
+    "types": [
+      "water"
+    ],
+    "base_stats": {
+      "hp": 59,
+      "attack": 63,
+      "defense": 80
+    },
+    "evolution": {
+      "to": 8,
+      "level": 16
+    },
+    "day_night": "diurne",
+    "evolution_stage": 1,
+    "sprite_front": "assets/sprites/pokemon/8_front.png",
+    "sprite_back": "assets/sprites/pokemon/8_back.png",
+    "all_attacks": [
+      {
+        "name": "mega-punch",
+        "type": "normal",
+        "power": 80
+      },
+      {
+        "name": "ice-punch",
+        "type": "ice",
+        "power": 75
+      },
+      {
+        "name": "mega-kick",
+        "type": "normal",
+        "power": 120
+      },
+      {
+        "name": "headbutt",
+        "type": "normal",
+        "power": 70
+      },
+      {
+        "name": "tackle",
+        "type": "normal",
+        "power": 40
+      },
+      {
+        "name": "body-slam",
+        "type": "normal",
+        "power": 85
+      }
+    ]
+  },
+  {
+    "id": 9,
+    "name_original": "blastoise",
+    "name_custom": "DataPipeline",
+    "types": [
+      "water"
+    ],
+    "base_stats": {
+      "hp": 79,
+      "attack": 83,
+      "defense": 100
+    },
+    "evolution": {
+      "to": 8,
+      "level": 16
+    },
+    "day_night": "diurne",
+    "evolution_stage": 3,
+    "sprite_front": "assets/sprites/pokemon/9_front.png",
+    "sprite_back": "assets/sprites/pokemon/9_back.png",
+    "all_attacks": [
+      {
+        "name": "mega-punch",
+        "type": "normal",
+        "power": 80
+      },
+      {
+        "name": "ice-punch",
+        "type": "ice",
+        "power": 75
+      },
+      {
+        "name": "mega-kick",
+        "type": "normal",
+        "power": 120
+      },
+      {
+        "name": "headbutt",
+        "type": "normal",
+        "power": 70
+      },
+      {
+        "name": "tackle",
+        "type": "normal",
+        "power": 40
+      },
+      {
+        "name": "body-slam",
+        "type": "normal",
+        "power": 85
+      }
+    ]
+  },
+  {
+    "id": 1,
+    "name_original": "bulbasaur",
+    "name_custom": "BulbIAGenerator",
+    "types": [
+      "grass",
+      "poison"
+    ],
+    "base_stats": {
+      "hp": 45,
+      "attack": 49,
+      "defense": 49
+    },
+    "evolution": {
+      "to": 2,
+      "level": 16
+    },
+    "day_night": "diurne",
+    "evolution_stage": 1,
+    "sprite_front": "assets/sprites/pokemon/1_front.png",
+    "sprite_back": "assets/sprites/pokemon/1_back.png",
+    "all_attacks": [
+      {
+        "name": "razor-wind",
+        "type": "normal",
+        "power": 80
+      },
+      {
+        "name": "swords-dance",
+        "type": "normal",
+        "power": null
+      },
+      {
+        "name": "cut",
+        "type": "normal",
+        "power": 50
+      },
+      {
+        "name": "bind",
+        "type": "normal",
+        "power": 15
+      },
+      {
+        "name": "vine-whip",
+        "type": "grass",
+        "power": 45
+      },
+      {
+        "name": "headbutt",
+        "type": "normal",
+        "power": 70
+      }
+    ]
+  },
+  {
+    "id": 2,
+    "name_original": "ivysaur",
+    "name_custom": "HerbiClassifieur",
+    "types": [
+      "grass",
+      "poison"
+    ],
+    "base_stats": {
+      "hp": 60,
+      "attack": 62,
+      "defense": 63
+    },
+    "evolution": {
+      "to": 2,
+      "level": 16
+    },
+    "day_night": "diurne",
+    "evolution_stage": 1,
+    "sprite_front": "assets/sprites/pokemon/2_front.png",
+    "sprite_back": "assets/sprites/pokemon/2_back.png",
+    "all_attacks": [
+      {
+        "name": "swords-dance",
+        "type": "normal",
+        "power": null
+      },
+      {
+        "name": "cut",
+        "type": "normal",
+        "power": 50
+      },
+      {
+        "name": "bind",
+        "type": "normal",
+        "power": 15
+      },
+      {
+        "name": "vine-whip",
+        "type": "grass",
+        "power": 45
+      },
+      {
+        "name": "headbutt",
+        "type": "normal",
+        "power": 70
+      },
+      {
+        "name": "tackle",
+        "type": "normal",
+        "power": 40
+      }
+    ]
+  },
+  {
+    "id": 3,
+    "name_original": "venusaur",
+    "name_custom": "FloriReseauNeuronal",
+    "types": [
+      "grass",
+      "poison"
+    ],
+    "base_stats": {
+      "hp": 80,
+      "attack": 82,
+      "defense": 83
+    },
+    "evolution": {
+      "to": 2,
+      "level": 16
+    },
+    "day_night": "diurne",
+    "evolution_stage": 3,
+    "sprite_front": "assets/sprites/pokemon/3_front.png",
+    "sprite_back": "assets/sprites/pokemon/3_back.png",
+    "all_attacks": [
+      {
+        "name": "swords-dance",
+        "type": "normal",
+        "power": null
+      },
+      {
+        "name": "cut",
+        "type": "normal",
+        "power": 50
+      },
+      {
+        "name": "bind",
+        "type": "normal",
+        "power": 15
+      },
+      {
+        "name": "vine-whip",
+        "type": "grass",
+        "power": 45
+      },
+      {
+        "name": "headbutt",
+        "type": "normal",
+        "power": 70
+      },
+      {
+        "name": "tackle",
+        "type": "normal",
+        "power": 40
+      }
+    ]
+  },
+  {
+    "id": 25,
+    "name_original": "pikachu",
+    "name_custom": "PikaChatGPT",
+    "types": [
+      "electric"
+    ],
+    "base_stats": {
+      "hp": 35,
+      "attack": 55,
+      "defense": 40
+    },
+    "evolution": {
+      "to": 25,
+      "level": 16
+    },
+    "day_night": "diurne",
+    "evolution_stage": 1,
+    "sprite_front": "assets/sprites/pokemon/25_front.png",
+    "sprite_back": "assets/sprites/pokemon/25_back.png",
+    "all_attacks": [
+      {
+        "name": "mega-punch",
+        "type": "normal",
+        "power": 80
+      },
+      {
+        "name": "pay-day",
+        "type": "normal",
+        "power": 40
+      },
+      {
+        "name": "thunder-punch",
+        "type": "electric",
+        "power": 75
+      },
+      {
+        "name": "slam",
+        "type": "normal",
+        "power": 80
+      },
+      {
+        "name": "double-kick",
+        "type": "fighting",
+        "power": 30
+      },
+      {
+        "name": "mega-kick",
+        "type": "normal",
+        "power": 120
+      }
+    ]
+  },
+  {
+    "id": 26,
+    "name_original": "raichu",
+    "name_custom": "RaichuGPT4",
+    "types": [
+      "electric"
+    ],
+    "base_stats": {
+      "hp": 60,
+      "attack": 90,
+      "defense": 55
+    },
+    "evolution": {
+      "to": 25,
+      "level": 16
+    },
+    "day_night": "diurne",
+    "evolution_stage": 3,
+    "sprite_front": "assets/sprites/pokemon/26_front.png",
+    "sprite_back": "assets/sprites/pokemon/26_back.png",
+    "all_attacks": [
+      {
+        "name": "mega-punch",
+        "type": "normal",
+        "power": 80
+      },
+      {
+        "name": "pay-day",
+        "type": "normal",
+        "power": 40
+      },
+      {
+        "name": "thunder-punch",
+        "type": "electric",
+        "power": 75
+      },
+      {
+        "name": "slam",
+        "type": "normal",
+        "power": 80
+      },
+      {
+        "name": "mega-kick",
+        "type": "normal",
+        "power": 120
+      },
+      {
+        "name": "headbutt",
+        "type": "normal",
+        "power": 70
+      }
+    ]
+  },
+  {
+    "id": 86,
+    "name_original": "seel",
+    "name_custom": "Seel",
+    "types": [
+      "water"
+    ],
+    "base_stats": {
+      "hp": 65,
+      "attack": 45,
+      "defense": 55
+    },
+    "evolution": {
+      "to": 87,
+      "level": 34
+    },
+    "day_night": "diurne",
+    "evolution_stage": 1,
+    "sprite_front": "assets/sprites/pokemon/86_front.png",
+    "sprite_back": "assets/sprites/pokemon/86_back.png",
+    "all_attacks": [
+      {
+        "name": "pay-day",
+        "type": "normal",
+        "power": 40
+      },
+      {
+        "name": "slam",
+        "type": "normal",
+        "power": 80
+      },
+      {
+        "name": "headbutt",
+        "type": "normal",
+        "power": 70
+      },
+      {
+        "name": "horn-drill",
+        "type": "normal",
+        "power": null
+      },
+      {
+        "name": "body-slam",
+        "type": "normal",
+        "power": 85
+      },
+      {
+        "name": "take-down",
+        "type": "normal",
+        "power": 90
+      }
+    ]
+  },
+  {
+    "id": 87,
+    "name_original": "dewgong",
+    "name_custom": "Dewgong",
+    "types": [
+      "water",
+      "ice"
+    ],
+    "base_stats": {
+      "hp": 90,
+      "attack": 70,
+      "defense": 80
+    },
+    "evolution": {
+      "to": 87,
+      "level": 34
+    },
+    "day_night": "diurne",
+    "evolution_stage": 1,
+    "sprite_front": "assets/sprites/pokemon/87_front.png",
+    "sprite_back": "assets/sprites/pokemon/87_back.png",
+    "all_attacks": [
+      {
+        "name": "pay-day",
+        "type": "normal",
+        "power": 40
+      },
+      {
+        "name": "headbutt",
+        "type": "normal",
+        "power": 70
+      },
+      {
+        "name": "horn-drill",
+        "type": "normal",
+        "power": null
+      },
+      {
+        "name": "body-slam",
+        "type": "normal",
+        "power": 85
+      },
+      {
+        "name": "take-down",
+        "type": "normal",
+        "power": 90
+      },
+      {
+        "name": "double-edge",
+        "type": "normal",
+        "power": 120
+      }
+    ]
+  },
+  {
+    "id": 66,
+    "name_original": "machop",
+    "name_custom": "Machop",
+    "types": [
+      "fighting"
+    ],
+    "base_stats": {
+      "hp": 70,
+      "attack": 80,
+      "defense": 50
+    },
+    "evolution": {
+      "to": 67,
+      "level": 28
+    },
+    "day_night": "diurne",
+    "evolution_stage": 1,
+    "sprite_front": "assets/sprites/pokemon/66_front.png",
+    "sprite_back": "assets/sprites/pokemon/66_back.png",
+    "all_attacks": [
+      {
+        "name": "karate-chop",
+        "type": "fighting",
+        "power": 50
+      },
+      {
+        "name": "mega-punch",
+        "type": "normal",
+        "power": 80
+      },
+      {
+        "name": "fire-punch",
+        "type": "fire",
+        "power": 75
+      },
+      {
+        "name": "ice-punch",
+        "type": "ice",
+        "power": 75
+      },
+      {
+        "name": "thunder-punch",
+        "type": "electric",
+        "power": 75
+      },
+      {
+        "name": "mega-kick",
+        "type": "normal",
+        "power": 120
+      }
+    ]
+  },
+  {
+    "id": 67,
+    "name_original": "machoke",
+    "name_custom": "Machoke",
+    "types": [
+      "fighting"
+    ],
+    "base_stats": {
+      "hp": 80,
+      "attack": 100,
+      "defense": 70
+    },
+    "evolution": {
+      "to": 67,
+      "level": 28
+    },
+    "day_night": "diurne",
+    "evolution_stage": 1,
+    "sprite_front": "assets/sprites/pokemon/67_front.png",
+    "sprite_back": "assets/sprites/pokemon/67_back.png",
+    "all_attacks": [
+      {
+        "name": "karate-chop",
+        "type": "fighting",
+        "power": 50
+      },
+      {
+        "name": "mega-punch",
+        "type": "normal",
+        "power": 80
+      },
+      {
+        "name": "fire-punch",
+        "type": "fire",
+        "power": 75
+      },
+      {
+        "name": "ice-punch",
+        "type": "ice",
+        "power": 75
+      },
+      {
+        "name": "thunder-punch",
+        "type": "electric",
+        "power": 75
+      },
+      {
+        "name": "mega-kick",
+        "type": "normal",
+        "power": 120
+      }
+    ]
+  },
+  {
+    "id": 68,
+    "name_original": "machamp",
+    "name_custom": "Machamp",
+    "types": [
+      "fighting"
+    ],
+    "base_stats": {
+      "hp": 90,
+      "attack": 130,
+      "defense": 80
+    },
+    "evolution": {
+      "to": 67,
+      "level": 28
+    },
+    "day_night": "diurne",
+    "evolution_stage": 3,
+    "sprite_front": "assets/sprites/pokemon/68_front.png",
+    "sprite_back": "assets/sprites/pokemon/68_back.png",
+    "all_attacks": [
+      {
+        "name": "karate-chop",
+        "type": "fighting",
+        "power": 50
+      },
+      {
+        "name": "mega-punch",
+        "type": "normal",
+        "power": 80
+      },
+      {
+        "name": "fire-punch",
+        "type": "fire",
+        "power": 75
+      },
+      {
+        "name": "ice-punch",
+        "type": "ice",
+        "power": 75
+      },
+      {
+        "name": "thunder-punch",
+        "type": "electric",
+        "power": 75
+      },
+      {
+        "name": "mega-kick",
+        "type": "normal",
+        "power": 120
+      }
+    ]
+  },
+  {
+    "id": 13,
+    "name_original": "weedle",
+    "name_custom": "Backprop",
+    "types": [
+      "bug",
+      "poison"
+    ],
+    "base_stats": {
+      "hp": 40,
+      "attack": 35,
+      "defense": 30
+    },
+    "evolution": {
+      "to": 14,
+      "level": 7
+    },
+    "day_night": "diurne",
+    "evolution_stage": 1,
+    "sprite_front": "assets/sprites/pokemon/13_front.png",
+    "sprite_back": "assets/sprites/pokemon/13_back.png",
+    "all_attacks": [
+      {
+        "name": "poison-sting",
+        "type": "poison",
+        "power": 15
+      },
+      {
+        "name": "string-shot",
+        "type": "bug",
+        "power": null
+      },
+      {
+        "name": "bug-bite",
+        "type": "bug",
+        "power": 60
+      },
+      {
+        "name": "electroweb",
+        "type": "electric",
+        "power": 55
+      }
+    ]
+  },
+  {
+    "id": 14,
+    "name_original": "kakuna",
+    "name_custom": "Gradient",
+    "types": [
+      "bug",
+      "poison"
+    ],
+    "base_stats": {
+      "hp": 45,
+      "attack": 25,
+      "defense": 50
+    },
+    "evolution": {
+      "to": 14,
+      "level": 7
+    },
+    "day_night": "diurne",
+    "evolution_stage": 1,
+    "sprite_front": "assets/sprites/pokemon/14_front.png",
+    "sprite_back": "assets/sprites/pokemon/14_back.png",
+    "all_attacks": [
+      {
+        "name": "string-shot",
+        "type": "bug",
+        "power": null
+      },
+      {
+        "name": "harden",
+        "type": "normal",
+        "power": null
+      },
+      {
+        "name": "iron-defense",
+        "type": "steel",
+        "power": null
+      },
+      {
+        "name": "bug-bite",
+        "type": "bug",
+        "power": 60
+      },
+      {
+        "name": "electroweb",
+        "type": "electric",
+        "power": 55
+      }
+    ]
+  },
+  {
+    "id": 15,
+    "name_original": "beedrill",
+    "name_custom": "Descente",
+    "types": [
+      "bug",
+      "poison"
+    ],
+    "base_stats": {
+      "hp": 65,
+      "attack": 90,
+      "defense": 40
+    },
+    "evolution": {
+      "to": 14,
+      "level": 7
+    },
+    "day_night": "diurne",
+    "evolution_stage": 3,
+    "sprite_front": "assets/sprites/pokemon/15_front.png",
+    "sprite_back": "assets/sprites/pokemon/15_back.png",
+    "all_attacks": [
+      {
+        "name": "swords-dance",
+        "type": "normal",
+        "power": null
+      },
+      {
+        "name": "cut",
+        "type": "normal",
+        "power": 50
+      },
+      {
+        "name": "headbutt",
+        "type": "normal",
+        "power": 70
+      },
+      {
+        "name": "fury-attack",
+        "type": "normal",
+        "power": 15
+      },
+      {
+        "name": "take-down",
+        "type": "normal",
+        "power": 90
+      },
+      {
+        "name": "double-edge",
+        "type": "normal",
+        "power": 120
+      }
+    ]
+  },
+  {
+    "id": 50,
+    "name_original": "diglett",
+    "name_custom": "Diglett",
+    "types": [
+      "ground"
+    ],
+    "base_stats": {
+      "hp": 10,
+      "attack": 55,
+      "defense": 25
+    },
+    "evolution": {
+      "to": 51,
+      "level": 26
+    },
+    "day_night": "diurne",
+    "evolution_stage": 1,
+    "sprite_front": "assets/sprites/pokemon/50_front.png",
+    "sprite_back": "assets/sprites/pokemon/50_back.png",
+    "all_attacks": [
+      {
+        "name": "scratch",
+        "type": "normal",
+        "power": 40
+      },
+      {
+        "name": "swords-dance",
+        "type": "normal",
+        "power": null
+      },
+      {
+        "name": "cut",
+        "type": "normal",
+        "power": 50
+      },
+      {
+        "name": "sand-attack",
+        "type": "ground",
+        "power": null
+      },
+      {
+        "name": "headbutt",
+        "type": "normal",
+        "power": 70
+      },
+      {
+        "name": "body-slam",
+        "type": "normal",
+        "power": 85
+      }
+    ]
+  },
+  {
+    "id": 51,
+    "name_original": "dugtrio",
+    "name_custom": "Dugtrio",
+    "types": [
+      "ground"
+    ],
+    "base_stats": {
+      "hp": 35,
+      "attack": 100,
+      "defense": 50
+    },
+    "evolution": {
+      "to": 51,
+      "level": 26
+    },
+    "day_night": "diurne",
+    "evolution_stage": 1,
+    "sprite_front": "assets/sprites/pokemon/51_front.png",
+    "sprite_back": "assets/sprites/pokemon/51_back.png",
+    "all_attacks": [
+      {
+        "name": "scratch",
+        "type": "normal",
+        "power": 40
+      },
+      {
+        "name": "swords-dance",
+        "type": "normal",
+        "power": null
+      },
+      {
+        "name": "cut",
+        "type": "normal",
+        "power": 50
+      },
+      {
+        "name": "sand-attack",
+        "type": "ground",
+        "power": null
+      },
+      {
+        "name": "headbutt",
+        "type": "normal",
+        "power": 70
+      },
+      {
+        "name": "body-slam",
+        "type": "normal",
+        "power": 85
+      }
+    ]
+  },
+  {
+    "id": 28,
+    "name_original": "sandslash",
+    "name_custom": "Sandslash",
+    "types": [
+      "ground"
+    ],
+    "base_stats": {
+      "hp": 75,
+      "attack": 100,
+      "defense": 110
+    },
+    "evolution": {
+      "to": 28,
+      "level": 22
+    },
+    "day_night": "diurne",
+    "evolution_stage": 1,
+    "sprite_front": "assets/sprites/pokemon/28_front.png",
+    "sprite_back": "assets/sprites/pokemon/28_back.png",
+    "all_attacks": [
+      {
+        "name": "scratch",
+        "type": "normal",
+        "power": 40
+      },
+      {
+        "name": "swords-dance",
+        "type": "normal",
+        "power": null
+      },
+      {
+        "name": "cut",
+        "type": "normal",
+        "power": 50
+      },
+      {
+        "name": "sand-attack",
+        "type": "ground",
+        "power": null
+      },
+      {
+        "name": "headbutt",
+        "type": "normal",
+        "power": 70
+      },
+      {
+        "name": "body-slam",
+        "type": "normal",
+        "power": 85
+      }
+    ]
+  },
+  {
+    "id": 63,
+    "name_original": "abra",
+    "name_custom": "Abra",
+    "types": [
+      "psychic"
+    ],
+    "base_stats": {
+      "hp": 25,
+      "attack": 20,
+      "defense": 15
+    },
+    "evolution": {
+      "to": 64,
+      "level": 16
+    },
+    "day_night": "nocturne",
+    "evolution_stage": 1,
+    "sprite_front": "assets/sprites/pokemon/63_front.png",
+    "sprite_back": "assets/sprites/pokemon/63_back.png",
+    "all_attacks": [
+      {
+        "name": "mega-punch",
+        "type": "normal",
+        "power": 80
+      },
+      {
+        "name": "fire-punch",
+        "type": "fire",
+        "power": 75
+      },
+      {
+        "name": "ice-punch",
+        "type": "ice",
+        "power": 75
+      },
+      {
+        "name": "thunder-punch",
+        "type": "electric",
+        "power": 75
+      },
+      {
+        "name": "mega-kick",
+        "type": "normal",
+        "power": 120
+      },
+      {
+        "name": "headbutt",
+        "type": "normal",
+        "power": 70
+      }
+    ]
+  },
+  {
+    "id": 64,
+    "name_original": "kadabra",
+    "name_custom": "Kadabra",
+    "types": [
+      "psychic"
+    ],
+    "base_stats": {
+      "hp": 40,
+      "attack": 35,
+      "defense": 30
+    },
+    "evolution": {
+      "to": 64,
+      "level": 16
+    },
+    "day_night": "nocturne",
+    "evolution_stage": 1,
+    "sprite_front": "assets/sprites/pokemon/64_front.png",
+    "sprite_back": "assets/sprites/pokemon/64_back.png",
+    "all_attacks": [
+      {
+        "name": "mega-punch",
+        "type": "normal",
+        "power": 80
+      },
+      {
+        "name": "fire-punch",
+        "type": "fire",
+        "power": 75
+      },
+      {
+        "name": "ice-punch",
+        "type": "ice",
+        "power": 75
+      },
+      {
+        "name": "thunder-punch",
+        "type": "electric",
+        "power": 75
+      },
+      {
+        "name": "mega-kick",
+        "type": "normal",
+        "power": 120
+      },
+      {
+        "name": "headbutt",
+        "type": "normal",
+        "power": 70
+      }
+    ]
+  },
+  {
+    "id": 65,
+    "name_original": "alakazam",
+    "name_custom": "Alakazam",
+    "types": [
+      "psychic"
+    ],
+    "base_stats": {
+      "hp": 55,
+      "attack": 50,
+      "defense": 45
+    },
+    "evolution": {
+      "to": 64,
+      "level": 16
+    },
+    "day_night": "nocturne",
+    "evolution_stage": 3,
+    "sprite_front": "assets/sprites/pokemon/65_front.png",
+    "sprite_back": "assets/sprites/pokemon/65_back.png",
+    "all_attacks": [
+      {
+        "name": "mega-punch",
+        "type": "normal",
+        "power": 80
+      },
+      {
+        "name": "fire-punch",
+        "type": "fire",
+        "power": 75
+      },
+      {
+        "name": "ice-punch",
+        "type": "ice",
+        "power": 75
+      },
+      {
+        "name": "thunder-punch",
+        "type": "electric",
+        "power": 75
+      },
+      {
+        "name": "mega-kick",
+        "type": "normal",
+        "power": 120
+      },
+      {
+        "name": "headbutt",
+        "type": "normal",
+        "power": 70
+      }
+    ]
+  },
+  {
+    "id": 10,
+    "name_original": "caterpie",
+    "name_custom": "Overfit",
+    "types": [
+      "bug"
+    ],
+    "base_stats": {
+      "hp": 45,
+      "attack": 30,
+      "defense": 35
+    },
+    "evolution": {
+      "to": 11,
+      "level": 7
+    },
+    "day_night": "diurne",
+    "evolution_stage": 1,
+    "sprite_front": "assets/sprites/pokemon/10_front.png",
+    "sprite_back": "assets/sprites/pokemon/10_back.png",
+    "all_attacks": [
+      {
+        "name": "tackle",
+        "type": "normal",
+        "power": 40
+      },
+      {
+        "name": "string-shot",
+        "type": "bug",
+        "power": null
+      },
+      {
+        "name": "snore",
+        "type": "normal",
+        "power": 50
+      },
+      {
+        "name": "bug-bite",
+        "type": "bug",
+        "power": 60
+      },
+      {
+        "name": "electroweb",
+        "type": "electric",
+        "power": 55
+      }
+    ]
+  },
+  {
+    "id": 11,
+    "name_original": "metapod",
+    "name_custom": "Underfit",
+    "types": [
+      "bug"
+    ],
+    "base_stats": {
+      "hp": 50,
+      "attack": 20,
+      "defense": 55
+    },
+    "evolution": {
+      "to": 11,
+      "level": 7
+    },
+    "day_night": "diurne",
+    "evolution_stage": 1,
+    "sprite_front": "assets/sprites/pokemon/11_front.png",
+    "sprite_back": "assets/sprites/pokemon/11_back.png",
+    "all_attacks": [
+      {
+        "name": "string-shot",
+        "type": "bug",
+        "power": null
+      },
+      {
+        "name": "harden",
+        "type": "normal",
+        "power": null
+      },
+      {
+        "name": "iron-defense",
+        "type": "steel",
+        "power": null
+      },
+      {
+        "name": "bug-bite",
+        "type": "bug",
+        "power": 60
+      },
+      {
+        "name": "electroweb",
+        "type": "electric",
+        "power": 55
+      }
+    ]
+  },
+  {
+    "id": 12,
+    "name_original": "butterfree",
+    "name_custom": "Bias",
+    "types": [
+      "bug",
+      "flying"
+    ],
+    "base_stats": {
+      "hp": 60,
+      "attack": 45,
+      "defense": 50
+    },
+    "evolution": {
+      "to": 11,
+      "level": 7
+    },
+    "day_night": "diurne",
+    "evolution_stage": 3,
+    "sprite_front": "assets/sprites/pokemon/12_front.png",
+    "sprite_back": "assets/sprites/pokemon/12_back.png",
+    "all_attacks": [
+      {
+        "name": "razor-wind",
+        "type": "normal",
+        "power": 80
+      },
+      {
+        "name": "gust",
+        "type": "flying",
+        "power": 40
+      },
+      {
+        "name": "whirlwind",
+        "type": "normal",
+        "power": null
+      },
+      {
+        "name": "headbutt",
+        "type": "normal",
+        "power": 70
+      },
+      {
+        "name": "tackle",
+        "type": "normal",
+        "power": 40
+      },
+      {
+        "name": "take-down",
+        "type": "normal",
+        "power": 90
+      }
+    ]
+  },
+  {
+    "id": 74,
+    "name_original": "geodude",
+    "name_custom": "Geodude",
+    "types": [
+      "rock",
+      "ground"
+    ],
+    "base_stats": {
+      "hp": 40,
+      "attack": 80,
+      "defense": 100
+    },
+    "evolution": {
+      "to": 75,
+      "level": 25
+    },
+    "day_night": "diurne",
+    "evolution_stage": 1,
+    "sprite_front": "assets/sprites/pokemon/74_front.png",
+    "sprite_back": "assets/sprites/pokemon/74_back.png",
+    "all_attacks": [
+      {
+        "name": "mega-punch",
+        "type": "normal",
+        "power": 80
+      },
+      {
+        "name": "fire-punch",
+        "type": "fire",
+        "power": 75
+      },
+      {
+        "name": "thunder-punch",
+        "type": "electric",
+        "power": 75
+      },
+      {
+        "name": "sand-attack",
+        "type": "ground",
+        "power": null
+      },
+      {
+        "name": "headbutt",
+        "type": "normal",
+        "power": 70
+      },
+      {
+        "name": "tackle",
+        "type": "normal",
+        "power": 40
+      }
+    ]
+  },
+  {
+    "id": 75,
+    "name_original": "graveler",
+    "name_custom": "Graveler",
+    "types": [
+      "rock",
+      "ground"
+    ],
+    "base_stats": {
+      "hp": 55,
+      "attack": 95,
+      "defense": 115
+    },
+    "evolution": {
+      "to": 75,
+      "level": 25
+    },
+    "day_night": "diurne",
+    "evolution_stage": 1,
+    "sprite_front": "assets/sprites/pokemon/75_front.png",
+    "sprite_back": "assets/sprites/pokemon/75_back.png",
+    "all_attacks": [
+      {
+        "name": "mega-punch",
+        "type": "normal",
+        "power": 80
+      },
+      {
+        "name": "fire-punch",
+        "type": "fire",
+        "power": 75
+      },
+      {
+        "name": "thunder-punch",
+        "type": "electric",
+        "power": 75
+      },
+      {
+        "name": "sand-attack",
+        "type": "ground",
+        "power": null
+      },
+      {
+        "name": "headbutt",
+        "type": "normal",
+        "power": 70
+      },
+      {
+        "name": "tackle",
+        "type": "normal",
+        "power": 40
+      }
+    ]
+  },
+  {
+    "id": 76,
+    "name_original": "golem",
+    "name_custom": "Golem",
+    "types": [
+      "rock",
+      "ground"
+    ],
+    "base_stats": {
+      "hp": 80,
+      "attack": 120,
+      "defense": 130
+    },
+    "evolution": {
+      "to": 75,
+      "level": 25
+    },
+    "day_night": "diurne",
+    "evolution_stage": 3,
+    "sprite_front": "assets/sprites/pokemon/76_front.png",
+    "sprite_back": "assets/sprites/pokemon/76_back.png",
+    "all_attacks": [
+      {
+        "name": "mega-punch",
+        "type": "normal",
+        "power": 80
+      },
+      {
+        "name": "fire-punch",
+        "type": "fire",
+        "power": 75
+      },
+      {
+        "name": "thunder-punch",
+        "type": "electric",
+        "power": 75
+      },
+      {
+        "name": "mega-kick",
+        "type": "normal",
+        "power": 120
+      },
+      {
+        "name": "sand-attack",
+        "type": "ground",
+        "power": null
+      },
+      {
+        "name": "headbutt",
+        "type": "normal",
+        "power": 70
+      }
+    ]
+  },
+  {
+    "id": 92,
+    "name_original": "gastly",
+    "name_custom": "Gastly",
+    "types": [
+      "ghost",
+      "poison"
+    ],
+    "base_stats": {
+      "hp": 30,
+      "attack": 35,
+      "defense": 30
+    },
+    "evolution": {
+      "to": 93,
+      "level": 25
+    },
+    "day_night": "nocturne",
+    "evolution_stage": 1,
+    "sprite_front": "assets/sprites/pokemon/92_front.png",
+    "sprite_back": "assets/sprites/pokemon/92_back.png",
+    "all_attacks": [
+      {
+        "name": "fire-punch",
+        "type": "fire",
+        "power": 75
+      },
+      {
+        "name": "ice-punch",
+        "type": "ice",
+        "power": 75
+      },
+      {
+        "name": "thunder-punch",
+        "type": "electric",
+        "power": 75
+      },
+      {
+        "name": "headbutt",
+        "type": "normal",
+        "power": 70
+      },
+      {
+        "name": "disable",
+        "type": "normal",
+        "power": null
+      },
+      {
+        "name": "mega-drain",
+        "type": "grass",
+        "power": 40
+      }
+    ]
+  },
+  {
+    "id": 93,
+    "name_original": "haunter",
+    "name_custom": "Haunter",
+    "types": [
+      "ghost",
+      "poison"
+    ],
+    "base_stats": {
+      "hp": 45,
+      "attack": 50,
+      "defense": 45
+    },
+    "evolution": {
+      "to": 93,
+      "level": 25
+    },
+    "day_night": "nocturne",
+    "evolution_stage": 1,
+    "sprite_front": "assets/sprites/pokemon/93_front.png",
+    "sprite_back": "assets/sprites/pokemon/93_back.png",
+    "all_attacks": [
+      {
+        "name": "fire-punch",
+        "type": "fire",
+        "power": 75
+      },
+      {
+        "name": "ice-punch",
+        "type": "ice",
+        "power": 75
+      },
+      {
+        "name": "thunder-punch",
+        "type": "electric",
+        "power": 75
+      },
+      {
+        "name": "headbutt",
+        "type": "normal",
+        "power": 70
+      },
+      {
+        "name": "mega-drain",
+        "type": "grass",
+        "power": 40
+      },
+      {
+        "name": "thunderbolt",
+        "type": "electric",
+        "power": 90
+      }
+    ]
+  },
+  {
+    "id": 94,
+    "name_original": "gengar",
+    "name_custom": "Gengar",
+    "types": [
+      "ghost",
+      "poison"
+    ],
+    "base_stats": {
+      "hp": 60,
+      "attack": 65,
+      "defense": 60
+    },
+    "evolution": {
+      "to": 93,
+      "level": 25
+    },
+    "day_night": "nocturne",
+    "evolution_stage": 3,
+    "sprite_front": "assets/sprites/pokemon/94_front.png",
+    "sprite_back": "assets/sprites/pokemon/94_back.png",
+    "all_attacks": [
+      {
+        "name": "mega-punch",
+        "type": "normal",
+        "power": 80
+      },
+      {
+        "name": "fire-punch",
+        "type": "fire",
+        "power": 75
+      },
+      {
+        "name": "ice-punch",
+        "type": "ice",
+        "power": 75
+      },
+      {
+        "name": "thunder-punch",
+        "type": "electric",
+        "power": 75
+      },
+      {
+        "name": "mega-kick",
+        "type": "normal",
+        "power": 120
+      },
+      {
+        "name": "headbutt",
+        "type": "normal",
+        "power": 70
+      }
+    ]
+  },
+  {
+    "id": 147,
+    "name_original": "dratini",
+    "name_custom": "Dratini",
+    "types": [
+      "dragon"
+    ],
+    "base_stats": {
+      "hp": 41,
+      "attack": 64,
+      "defense": 45
+    },
+    "evolution": {
+      "to": 148,
+      "level": 30
+    },
+    "day_night": "nocturne",
+    "evolution_stage": 1,
+    "sprite_front": "assets/sprites/pokemon/147_front.png",
+    "sprite_back": "assets/sprites/pokemon/147_back.png",
+    "all_attacks": [
+      {
+        "name": "bind",
+        "type": "normal",
+        "power": 15
+      },
+      {
+        "name": "slam",
+        "type": "normal",
+        "power": 80
+      },
+      {
+        "name": "headbutt",
+        "type": "normal",
+        "power": 70
+      },
+      {
+        "name": "body-slam",
+        "type": "normal",
+        "power": 85
+      },
+      {
+        "name": "wrap",
+        "type": "normal",
+        "power": 15
+      },
+      {
+        "name": "take-down",
+        "type": "normal",
+        "power": 90
+      }
+    ]
+  },
+  {
+    "id": 148,
+    "name_original": "dragonair",
+    "name_custom": "Dragonair",
+    "types": [
+      "dragon"
+    ],
+    "base_stats": {
+      "hp": 61,
+      "attack": 84,
+      "defense": 65
+    },
+    "evolution": {
+      "to": 148,
+      "level": 30
+    },
+    "day_night": "nocturne",
+    "evolution_stage": 1,
+    "sprite_front": "assets/sprites/pokemon/148_front.png",
+    "sprite_back": "assets/sprites/pokemon/148_back.png",
+    "all_attacks": [
+      {
+        "name": "bind",
+        "type": "normal",
+        "power": 15
+      },
+      {
+        "name": "slam",
+        "type": "normal",
+        "power": 80
+      },
+      {
+        "name": "headbutt",
+        "type": "normal",
+        "power": 70
+      },
+      {
+        "name": "horn-drill",
+        "type": "normal",
+        "power": null
+      },
+      {
+        "name": "body-slam",
+        "type": "normal",
+        "power": 85
+      },
+      {
+        "name": "wrap",
+        "type": "normal",
+        "power": 15
+      }
+    ]
+  },
+  {
+    "id": 149,
+    "name_original": "dragonite",
+    "name_custom": "Dragonite",
+    "types": [
+      "dragon",
+      "flying"
+    ],
+    "base_stats": {
+      "hp": 91,
+      "attack": 134,
+      "defense": 95
+    },
+    "evolution": {
+      "to": 148,
+      "level": 30
+    },
+    "day_night": "nocturne",
+    "evolution_stage": 3,
+    "sprite_front": "assets/sprites/pokemon/149_front.png",
+    "sprite_back": "assets/sprites/pokemon/149_back.png",
+    "all_attacks": [
+      {
+        "name": "mega-punch",
+        "type": "normal",
+        "power": 80
+      },
+      {
+        "name": "fire-punch",
+        "type": "fire",
+        "power": 75
+      },
+      {
+        "name": "ice-punch",
+        "type": "ice",
+        "power": 75
+      },
+      {
+        "name": "thunder-punch",
+        "type": "electric",
+        "power": 75
+      },
+      {
+        "name": "razor-wind",
+        "type": "normal",
+        "power": 80
+      },
+      {
+        "name": "cut",
+        "type": "normal",
+        "power": 50
+      }
+    ]
+  },
+  {
+    "id": 197,
+    "name_original": "umbreon",
+    "name_custom": "Umbreon",
+    "types": [
+      "dark"
+    ],
+    "base_stats": {
+      "hp": 95,
+      "attack": 65,
+      "defense": 110
+    },
+    "evolution": {
+      "to": 134,
+      "level": 16
+    },
+    "day_night": "nocturne",
+    "evolution_stage": 3,
+    "sprite_front": "assets/sprites/pokemon/197_front.png",
+    "sprite_back": "assets/sprites/pokemon/197_back.png",
+    "all_attacks": [
+      {
+        "name": "pay-day",
+        "type": "normal",
+        "power": 40
+      },
+      {
+        "name": "cut",
+        "type": "normal",
+        "power": 50
+      },
+      {
+        "name": "sand-attack",
+        "type": "ground",
+        "power": null
+      },
+      {
+        "name": "headbutt",
+        "type": "normal",
+        "power": 70
+      },
+      {
+        "name": "tackle",
+        "type": "normal",
+        "power": 40
+      },
+      {
+        "name": "body-slam",
+        "type": "normal",
+        "power": 85
+      }
+    ]
+  },
+  {
+    "id": 198,
+    "name_original": "murkrow",
+    "name_custom": "Murkrow",
+    "types": [
+      "dark",
+      "flying"
+    ],
+    "base_stats": {
+      "hp": 60,
+      "attack": 85,
+      "defense": 42
+    },
+    "evolution": {
+      "to": 430,
+      "level": 16
+    },
+    "day_night": "nocturne",
+    "evolution_stage": 1,
+    "sprite_front": "assets/sprites/pokemon/198_front.png",
+    "sprite_back": "assets/sprites/pokemon/198_back.png",
+    "all_attacks": [
+      {
+        "name": "gust",
+        "type": "flying",
+        "power": 40
+      },
+      {
+        "name": "wing-attack",
+        "type": "flying",
+        "power": 60
+      },
+      {
+        "name": "whirlwind",
+        "type": "normal",
+        "power": null
+      },
+      {
+        "name": "fly",
+        "type": "flying",
+        "power": 90
+      },
+      {
+        "name": "take-down",
+        "type": "normal",
+        "power": 90
+      },
+      {
+        "name": "double-edge",
+        "type": "normal",
+        "power": 120
+      }
+    ]
+  },
+  {
+    "id": 215,
+    "name_original": "sneasel",
+    "name_custom": "Sneasel",
+    "types": [
+      "dark",
+      "ice"
+    ],
+    "base_stats": {
+      "hp": 55,
+      "attack": 95,
+      "defense": 55
+    },
+    "evolution": {
+      "to": 461,
+      "level": 16
+    },
+    "day_night": "nocturne",
+    "evolution_stage": 1,
+    "sprite_front": "assets/sprites/pokemon/215_front.png",
+    "sprite_back": "assets/sprites/pokemon/215_back.png",
+    "all_attacks": [
+      {
+        "name": "mega-punch",
+        "type": "normal",
+        "power": 80
+      },
+      {
+        "name": "ice-punch",
+        "type": "ice",
+        "power": 75
+      },
+      {
+        "name": "scratch",
+        "type": "normal",
+        "power": 40
+      },
+      {
+        "name": "swords-dance",
+        "type": "normal",
+        "power": null
+      },
+      {
+        "name": "cut",
+        "type": "normal",
+        "power": 50
+      },
+      {
+        "name": "mega-kick",
+        "type": "normal",
+        "power": 120
+      }
+    ]
+  },
+  {
+    "id": 208,
+    "name_original": "steelix",
+    "name_custom": "Steelix",
+    "types": [
+      "steel",
+      "ground"
+    ],
+    "base_stats": {
+      "hp": 75,
+      "attack": 85,
+      "defense": 200
+    },
+    "evolution": {
+      "to": 208,
+      "level": 16
+    },
+    "day_night": "nocturne",
+    "evolution_stage": 1,
+    "sprite_front": "assets/sprites/pokemon/208_front.png",
+    "sprite_back": "assets/sprites/pokemon/208_back.png",
+    "all_attacks": [
+      {
+        "name": "cut",
+        "type": "normal",
+        "power": 50
+      },
+      {
+        "name": "bind",
+        "type": "normal",
+        "power": 15
+      },
+      {
+        "name": "slam",
+        "type": "normal",
+        "power": 80
+      },
+      {
+        "name": "headbutt",
+        "type": "normal",
+        "power": 70
+      },
+      {
+        "name": "tackle",
+        "type": "normal",
+        "power": 40
+      },
+      {
+        "name": "body-slam",
+        "type": "normal",
+        "power": 85
+      }
+    ]
+  },
+  {
+    "id": 212,
+    "name_original": "scizor",
+    "name_custom": "Scizor",
+    "types": [
+      "bug",
+      "steel"
+    ],
+    "base_stats": {
+      "hp": 70,
+      "attack": 130,
+      "defense": 100
+    },
+    "evolution": {
+      "to": 212,
+      "level": 16
+    },
+    "day_night": "diurne",
+    "evolution_stage": 1,
+    "sprite_front": "assets/sprites/pokemon/212_front.png",
+    "sprite_back": "assets/sprites/pokemon/212_back.png",
+    "all_attacks": [
+      {
+        "name": "razor-wind",
+        "type": "normal",
+        "power": 80
+      },
+      {
+        "name": "swords-dance",
+        "type": "normal",
+        "power": null
+      },
+      {
+        "name": "cut",
+        "type": "normal",
+        "power": 50
+      },
+      {
+        "name": "wing-attack",
+        "type": "flying",
+        "power": 60
+      },
+      {
+        "name": "headbutt",
+        "type": "normal",
+        "power": 70
+      },
+      {
+        "name": "take-down",
+        "type": "normal",
+        "power": 90
+      }
+    ]
+  },
+  {
+    "id": 227,
+    "name_original": "skarmory",
+    "name_custom": "Skarmory",
+    "types": [
+      "steel",
+      "flying"
+    ],
+    "base_stats": {
+      "hp": 65,
+      "attack": 80,
+      "defense": 140
+    },
+    "evolution": null,
+    "day_night": "nocturne",
+    "evolution_stage": 1,
+    "sprite_front": "assets/sprites/pokemon/227_front.png",
+    "sprite_back": "assets/sprites/pokemon/227_back.png",
+    "all_attacks": [
+      {
+        "name": "swords-dance",
+        "type": "normal",
+        "power": null
+      },
+      {
+        "name": "cut",
+        "type": "normal",
+        "power": 50
+      },
+      {
+        "name": "wing-attack",
+        "type": "flying",
+        "power": 60
+      },
+      {
+        "name": "whirlwind",
+        "type": "normal",
+        "power": null
+      },
+      {
+        "name": "fly",
+        "type": "flying",
+        "power": 90
+      },
+      {
+        "name": "sand-attack",
+        "type": "ground",
+        "power": null
+      }
+    ]
+  },
+  {
+    "id": 700,
+    "name_original": "sylveon",
+    "name_custom": "Sylveon",
+    "types": [
+      "fairy"
+    ],
+    "base_stats": {
+      "hp": 95,
+      "attack": 65,
+      "defense": 65
+    },
+    "evolution": {
+      "to": 134,
+      "level": 16
+    },
+    "day_night": "nocturne",
+    "evolution_stage": 3,
+    "sprite_front": "assets/sprites/pokemon/700_front.png",
+    "sprite_back": "assets/sprites/pokemon/700_back.png",
+    "all_attacks": [
+      {
+        "name": "pay-day",
+        "type": "normal",
+        "power": 40
+      },
+      {
+        "name": "cut",
+        "type": "normal",
+        "power": 50
+      },
+      {
+        "name": "sand-attack",
+        "type": "ground",
+        "power": null
+      },
+      {
+        "name": "tackle",
+        "type": "normal",
+        "power": 40
+      },
+      {
+        "name": "body-slam",
+        "type": "normal",
+        "power": 85
+      },
+      {
+        "name": "take-down",
+        "type": "normal",
+        "power": 90
+      }
+    ]
+  },
+  {
+    "id": 702,
+    "name_original": "dedenne",
+    "name_custom": "Dedenne",
+    "types": [
+      "electric",
+      "fairy"
+    ],
+    "base_stats": {
+      "hp": 67,
+      "attack": 58,
+      "defense": 57
+    },
+    "evolution": null,
+    "day_night": "diurne",
+    "evolution_stage": 1,
+    "sprite_front": "assets/sprites/pokemon/702_front.png",
+    "sprite_back": "assets/sprites/pokemon/702_back.png",
+    "all_attacks": [
+      {
+        "name": "thunder-punch",
+        "type": "electric",
+        "power": 75
+      },
+      {
+        "name": "cut",
+        "type": "normal",
+        "power": 50
+      },
+      {
+        "name": "tackle",
+        "type": "normal",
+        "power": 40
+      },
+      {
+        "name": "take-down",
+        "type": "normal",
+        "power": 90
+      },
+      {
+        "name": "tail-whip",
+        "type": "normal",
+        "power": null
+      },
+      {
+        "name": "hyper-beam",
+        "type": "normal",
+        "power": 150
+      }
+    ]
+  },
+  {
+    "id": 707,
+    "name_original": "klefki",
+    "name_custom": "Klefki",
+    "types": [
+      "steel",
+      "fairy"
+    ],
+    "base_stats": {
+      "hp": 57,
+      "attack": 80,
+      "defense": 91
+    },
+    "evolution": null,
+    "day_night": "nocturne",
+    "evolution_stage": 1,
+    "sprite_front": "assets/sprites/pokemon/707_front.png",
+    "sprite_back": "assets/sprites/pokemon/707_back.png",
+    "all_attacks": [
+      {
+        "name": "cut",
+        "type": "normal",
+        "power": 50
+      },
+      {
+        "name": "tackle",
+        "type": "normal",
+        "power": 40
+      },
+      {
+        "name": "hyper-beam",
+        "type": "normal",
+        "power": 150
+      },
+      {
+        "name": "thunder-wave",
+        "type": "electric",
+        "power": null
+      },
+      {
+        "name": "toxic",
+        "type": "poison",
+        "power": null
+      },
+      {
+        "name": "psychic",
+        "type": "psychic",
+        "power": 90
+      }
+    ]
+  }
+]

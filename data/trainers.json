@@ -42,7 +42,8 @@
   {
     "id": 3,
     "type": "trainer",
-    "name": "StackOverflow",
+    "name": "Jade",
+    "sprite": "f3_jade",
     "zone": "campus",
     "x": 896,
     "y": 1152,

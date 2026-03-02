@@ -39,12 +39,25 @@ class NPCProfessor(NPC):
             data: dict from npcs.json
         """
         super().__init__(data)
-        
+
         # IDs of the 3 starters in pokemon.json
         self.starter_ids = data.get("starter_ids", [1, 4, 7])
-        
+
         # Flag: has starter been given?
         self.starter_given = False
+
+        # Only professors with gives_starter=true (i.e. Akram) trigger starter selection.
+        self.gives_starter = data.get("gives_starter", False)
+
+        # Load talk dialogue from PROFESSOR_DIALOGUES if not already in data
+        if "talk" not in self.dialogues:
+            try:
+                from data.trainer_dialogues import PROFESSOR_DIALOGUES
+                prof_dlg = PROFESSOR_DIALOGUES.get(self.name)
+                if prof_dlg:
+                    self.dialogues.update(prof_dlg)
+            except Exception:
+                pass
     
     
     # -------------------------------------------------------------------------
@@ -92,49 +105,37 @@ class NPCProfessor(NPC):
             (short friendly line)
         """
         if not self.starter_given:
-            return self.dialogues.get("first_meeting", [
-                "Welcome to La Plateforme!",
-                "I'm the Professor of this school.",
-                "Here, we learn by coding... and training Pokemon!",
-                "It's time to choose your first partner!"
+            return self.dialogues.get("first", [
+                "OUE LES GARS Bienvenue à La Plateforme !",
+                "Je suis le Prof. Akram les gars.",
+                "Ici on apprend en codant les gars... et en entraînant des Pokémon les gars.",
+                "Il est temps de choisir ton premier partenaire !"
             ])
-        
-        return self.dialogues.get("default", [
-            "How is your adventure going?",
-            "Keep it up, you'll become the best trainer at La Plateforme!"
+
+        return self.dialogues.get("already_have_starter", [
+            "Alors, comment avance ton aventure ?",
+            "Continue comme ça, tu deviendras le meilleur dresseur de La Plateforme !"
         ])
     
     
     def on_dialogue_end(self, game_manager):
         """
         Called when dialogue ends.
-        
+
         If player has no Pokemon in team → launch starter selection.
         Otherwise → nothing, dialogue just closes.
         """
-        # If player already has Pokemon, nothing to do
+        if not self.gives_starter:
+            return
+
         if not game_manager.player.team.is_empty:
             return
-        
-        # If starter already given (safety)
+
         if self.starter_given:
             return
-        
-        # Load starter data
-        starters_data = self._load_starters()
-        
-        if not starters_data:
-            # Can't load data, do nothing
-            return
-        
-        # Push starter selection screen
+
         from states.state_starter_select import StateStarterSelect
-        
-        starter_state = StateStarterSelect(
-            game_manager,
-            starters_data,
-            callback=self._on_starter_chosen
-        )
+        starter_state = StateStarterSelect(game_manager, npc_professor=self)
         game_manager.state_manager.push(starter_state)
     
     
@@ -169,9 +170,9 @@ class NPCProfessor(NPC):
         
         # Confirmation dialogue
         lines = self.dialogues.get("after_starter", [
-            "{} has joined your team!".format(starter.name),
-            "Take good care of it!",
-            "Your adventure begins now!"
+            "{} a rejoint ton équipe !".format(starter.name),
+            "Prends-en soin.",
+            "Ton aventure commence maintenant !"
         ])
         
         # Replace placeholder if needed

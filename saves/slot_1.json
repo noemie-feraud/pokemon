@@ -1,0 +1,108 @@
+{
+  "trainer": {
+    "name": "Linus",
+    "character_id": 1,
+    "position": {
+      "zone": "quart",
+      "x": 0,
+      "y": 32
+    }
+  },
+  "team": [
+    {
+      "id": 1,
+      "name_original": "bulbasaur",
+      "name_custom": "BulbIAGenerator",
+      "types": [
+        "grass",
+        "poison"
+      ],
+      "base_stats": {
+        "hp": 45,
+        "attack": 49,
+        "defense": 49
+      },
+      "level": 5,
+      "current_hp": 70,
+      "xp": 0,
+      "xp_for_next_level": 100,
+      "evolution_stage": 1,
+      "attacks": [
+        {
+          "name": "razor-wind",
+          "type": "normal",
+          "power": 80
+        },
+        {
+          "name": "swords-dance",
+          "type": "normal",
+          "power": null
+        }
+      ],
+      "all_attacks": [
+        {
+          "name": "razor-wind",
+          "type": "normal",
+          "power": 80
+        },
+        {
+          "name": "swords-dance",
+          "type": "normal",
+          "power": null
+        },
+        {
+          "name": "cut",
+          "type": "normal",
+          "power": 50
+        },
+        {
+          "name": "bind",
+          "type": "normal",
+          "power": 15
+        },
+        {
+          "name": "vine-whip",
+          "type": "grass",
+          "power": 45
+        },
+        {
+          "name": "headbutt",
+          "type": "normal",
+          "power": 70
+        }
+      ],
+      "evolution": {
+        "to": 2,
+        "level": 16
+      },
+      "day_night": "diurne",
+      "status": null,
+      "sprite_front": "assets/sprites/pokemon/1_front.png",
+      "sprite_back": "assets/sprites/pokemon/1_back.png"
+    }
+  ],
+  "storage": [],
+  "inventory": {
+    "items": {}
+  },
+  "credits": 0,
+  "trainers_beaten": [],
+  "quests_completed": [],
+  "quests_active": [],
+  "pokedex": {
+    "seen": [
+      1,
+      9,
+      26
+    ],
+    "captured": [
+      1
+    ]
+  },
+  "day_night_time": 752.1099999997214,
+  "play_time": 108.13200000000036,
+  "_metadata": {
+    "version": "1.0",
+    "save_date": "2026-03-02 03:15:49"
+  }
+}

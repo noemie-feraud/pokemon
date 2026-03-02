@@ -77,8 +77,21 @@ def calculate_damage(attacker, defender, attack, day_night_cycle,
     # -------------------------------------------------------------------------
     # Formula: (power × attack) / (defense × 0.5)
     # The 0.5 factor on defense makes combat more dynamic
-    power = attack["power"]
-    
+    power = attack.get("power") or 0
+
+    # Status moves (power=None or 0) deal no damage
+    if power == 0:
+        return {
+            "damage": 0,
+            "hit": True,
+            "miss": False,
+            "type_multiplier": 1.0,
+            "super_effective": False,
+            "not_very_effective": False,
+            "immune": False,
+            "stab": False
+        }
+
     base_damage = (power * attack_stat) / (defense_stat * 0.5)
     
     # -------------------------------------------------------------------------

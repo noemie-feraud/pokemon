@@ -14,6 +14,9 @@ from config.settings import SCREEN_WIDTH, SCREEN_HEIGHT, FPS, WINDOW_TITLE
 from core.state_manager import StateManager
 from core.audio_manager import AudioManager
 from core.day_night_cycle import DayNightCycle
+from core.map_manager import MapManager
+from economy.item import ItemCatalog
+from data.pokemon_catalog import PokemonCatalog 
 from states.state_menu import StateMenu
 
 
@@ -62,11 +65,17 @@ class Game:
         
         # Player (created later, after character selection)
         self.player = None
+        self.current_save_slot = None   # slot de sauvegarde actuel
         
         # Managers
         self.state_manager = StateManager()
         self.audio_manager = AudioManager()
         self.day_night_cycle = DayNightCycle()
+        self.map_manager = MapManager()
+        self.item_catalog = ItemCatalog()
+        self.pokemon_catalog = PokemonCatalog()  
+        self.pokemon_data = None                   # temporaire
+        self.quest_manager = None                   # créé plus tard
         
         # Push main menu as first state
         # Pass self (the Game) so states can access everything
@@ -164,5 +173,11 @@ class Game:
     # We could also auto-save here (emergency save), but that's SaveManager's job.
     
     def cleanup(self):
-        """Clean up Pygame resources."""
+        """Clean up Pygame resources, auto-saving before exit if a slot is active."""
+        if self.player is not None and self.current_save_slot is not None:
+            try:
+                from core.save_manager import SaveManager
+                SaveManager().auto_save(self, self.current_save_slot)
+            except Exception as e:
+                print(f"Auto-save on exit failed: {e}")
         pygame.quit()

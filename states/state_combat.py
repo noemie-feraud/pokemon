@@ -21,6 +21,7 @@ PHASE_PLAYER_CHOICE = "player_choice"
 PHASE_EXECUTION = "execution"
 PHASE_REPLACEMENT = "replacement"
 PHASE_EVOLUTION = "evolution"
+PHASE_CAPTURE = "capture"
 PHASE_END = "end"
 
 
@@ -57,39 +58,57 @@ class StateCombat(State):
         # Combat takes full screen (not transparent)
         self.transparent = False
         
-        # --- GET PLAYER'S FIRST POKEMON ---
+        # --- GET PLAYER'S TEAM ---
         player = game_manager.player
-        self.player_pokemon = player.team.get_first_valid()
+        self.player_team = player.team
+        
+        # --- CREATE OPPONENT TEAM ---
+        # For wild combat, opponent_team is just the single Pokemon
+        # For trainer combat, opponent_team is the trainer's full team
+        if combat_type == "wild":
+            from entities.team import Team
+            self.opponent_team = Team([opponent_pokemon])
+        else:
+            self.opponent_team = trainer.team
         
         # --- CREATE MODEL ---
         self.combat = Combat(
-            player_pokemon=self.player_pokemon,
-            opponent_pokemon=self.opponent_pokemon,
+            game_manager=game_manager,
+            player_team=self.player_team,
+            opponent_team=self.opponent_team,
             combat_type=combat_type,
-            trainer=trainer,
-            day_night_cycle=game_manager.day_night_cycle
+            trainer=trainer
         )
         
         # --- CREATE VIEW ---
         self.combat_ui = CombatUI(game_manager)
         self.combat_ui.set_state(
-            player_pokemon=self.player_pokemon,
-            opponent_pokemon=self.opponent_pokemon,
-            combat_type=combat_type
+            player_pokemon=self.combat.player_pokemon,
+            opponent_pokemon=self.combat.opponent_pokemon,
+            combat_type=combat_type,
+            player_team=self.player_team
+        )
+        self.combat_ui.load_sprites(
+            self.combat.player_pokemon,
+            self.combat.opponent_pokemon
         )
         
         # --- CURRENT PHASE ---
         self.phase = PHASE_INTRO
-        
+
         # --- EVENTS ---
         self.events = []
         self.event_index = 0
-        
+
         # --- PENDING EVOLUTIONS ---
         self.pending_evolutions = []
         self.evolution_index = 0
+
+        # --- PRE-COMBAT SELECTION ---
+        # True when player is choosing their starting Pokémon (no opponent attack)
+        self.pre_combat_switch = False
         
-        # --- INTRO MESSAGE (IN FRENCH) ---
+        # --- INTRO MESSAGE ---
         if combat_type == "wild":
             intro_message = f"Un {opponent_pokemon.name} sauvage apparaît !"
         else:
@@ -141,7 +160,10 @@ class StateCombat(State):
             
             elif self.phase == PHASE_EVOLUTION:
                 self._handle_evolution(event)
-            
+
+            elif self.phase == PHASE_CAPTURE:
+                self._handle_capture_choice(event)
+
             elif self.phase == PHASE_END:
                 self._handle_end(event)
     
@@ -154,12 +176,15 @@ class StateCombat(State):
         """Handle intro phase (appearance message)."""
         if event.key == pygame.K_SPACE:
             if self.combat_ui.next_event():
-                # Still have intro events
                 pass
             else:
-                # Intro finished → player choice
                 self.phase = PHASE_PLAYER_CHOICE
-                self.combat_ui.set_mode("menu")
+                # If player has multiple valid Pokémon, let them choose the starting one
+                if self.player_team.count_valid() > 1:
+                    self.pre_combat_switch = True
+                    self.combat_ui.set_mode("pokemon")
+                else:
+                    self.combat_ui.set_mode("menu")
     
     
     # -------------------------------------------------------------------------
@@ -171,16 +196,28 @@ class StateCombat(State):
         Handle phase where player chooses their action.
         """
         action = self.combat_ui.handle_input(event)
-        
+
         if action is None:
-            return  # Player is still navigating
-        
-        # Player has chosen an action
-        # action = {"type": "attack", "attack": attack}
-        #        or {"type": "item", "item": item}
-        #        or {"type": "switch", "index": 2}
-        #        or {"type": "flee"}
-        
+            return
+
+        # Pre-combat Pokémon selection: switch without opponent attacking
+        if self.pre_combat_switch:
+            if action["type"] == "switch":
+                new_pokemon = self.player_team.get_pokemon(action["index"])
+                if new_pokemon and not new_pokemon.is_ko:
+                    self.combat.player_pokemon = new_pokemon
+                    self.combat_ui.set_state(
+                        player_pokemon=new_pokemon,
+                        opponent_pokemon=self.combat.opponent_pokemon,
+                        combat_type=self.combat_type,
+                        player_team=self.player_team
+                    )
+                    self.combat_ui.load_sprites(new_pokemon, self.combat.opponent_pokemon)
+            # In all cases (switch or flee/escape), end pre-combat selection
+            self.pre_combat_switch = False
+            self.combat_ui.set_mode("menu")
+            return
+
         self._execute_action(action)
     
     
@@ -214,11 +251,11 @@ class StateCombat(State):
         # --- SWITCH POKEMON ---
         if action["type"] == "switch":
             chosen_pokemon = player.team.get_pokemon(action["index"])
-            self.combat.switch_player_pokemon(chosen_pokemon)
-            self.player_pokemon = chosen_pokemon
             
-            # Switch consumes turn → opponent attacks
-            events = self.combat.execute_turn_after_switch()
+            # Execute turn with switch action
+            events = self.combat.execute_turn(
+                {"type": "switch", "index": action["index"]}
+            )
             self._process_events(events)
             return
         
@@ -235,14 +272,17 @@ class StateCombat(State):
                     self.combat_type
                 )
                 player.inventory.remove(item.id, 1)
-                
+
+                if result["capture_success"]:
+                    player.pokedex.register_captured(self.opponent_pokemon.id)
+
                 events = self._create_capture_events(result)
                 self._process_events(events)
                 return
             else:
                 # Healing/boost item
                 events = self.combat.execute_turn(
-                    {"type": "item", "item": item, "target": self.player_pokemon}
+                    {"type": "item", "item": item, "target": self.combat.player_pokemon}
                 )
                 player.inventory.remove(item.id, 1)
                 self._process_events(events)
@@ -260,21 +300,22 @@ class StateCombat(State):
     def _process_events(self, events):
         """
         Receive events from model and pass them to view.
-        
+
         Args:
             events: list of combat events
         """
         self.events = events
         self.event_index = 0
-        self.combat_ui.set_events(events)
         self.phase = PHASE_EXECUTION
-        
-        # Update visual state
+
+        # Update visual state FIRST so events see current Pokemon
         self.combat_ui.set_state(
             player_pokemon=self.combat.player_pokemon,
             opponent_pokemon=self.combat.opponent_pokemon,
-            combat_type=self.combat_type
+            combat_type=self.combat_type,
+            player_team=self.player_team
         )
+        self.combat_ui.set_events(events)
     
     
     def _create_capture_events(self, result):
@@ -316,9 +357,11 @@ class StateCombat(State):
                 "text": f"Raté ! {self.opponent_pokemon.name} s'est libéré !"
             })
             
-            # Opponent attacks after failed capture
-            opponent_events = self.combat.execute_opponent_turn_only()
-            events.extend(opponent_events)
+            # Execute opponent's turn after failed capture
+            # The turn is already processed in combat.execute_turn()
+            # So we just need to get the opponent's action events
+            # For simplicity, we'll let the next turn handle it
+            pass
         
         return events
     
@@ -340,8 +383,10 @@ class StateCombat(State):
                 return
             
             if self.combat_ui.next_event():
-                # Still have events
-                pass
+                # If replacement screen just appeared and queue is now empty,
+                # transition to PHASE_REPLACEMENT immediately (no extra SPACE needed)
+                if not self.combat_ui.pending_events and self.combat_ui.mode == "replacement":
+                    self._after_events()
             else:
                 # All events displayed → determine next step
                 self._after_events()
@@ -352,22 +397,42 @@ class StateCombat(State):
         Called when all events of a turn have been displayed.
         Determine what to do next.
         """
+        # If we're in the end sequence (victory/defeat messages just shown)
+        if getattr(self, 'waiting_for_end', False):
+            self.waiting_for_end = False
+            # Offer capture before evolutions
+            if getattr(self, 'pending_capture', False):
+                self.pending_capture = False
+                self._start_capture_prompt()
+                return
+            if self.pending_evolutions:
+                pokemon = self.pending_evolutions[self.evolution_index]
+                evolution_name = pokemon.get_evolution_name()
+                self.combat_ui.set_events([{
+                    "type": "message",
+                    "text": f"{pokemon.name} veut évoluer en {evolution_name} ! [Entrée] Oui  [Échap] Non"
+                }])
+                self.phase = PHASE_EVOLUTION
+            else:
+                self.phase = PHASE_END
+            return
+
         # Look for end event in the list
         for evt in self.events:
             if evt["type"] == "combat_end":
                 self._begin_combat_end(evt["result"])
                 return
-            
+
             if evt["type"] == "replacement_choice":
                 # Player's Pokemon is KO → force replacement
-                if self.game_manager.player.team.has_valid_pokemon():
+                if self.game_manager.player.team.has_valid_pokemon:
                     self.phase = PHASE_REPLACEMENT
                     self.combat_ui.set_mode("replacement")
                 else:
                     # No Pokemon left → defeat
                     self._begin_combat_end("defeat")
                 return
-        
+
         # Nothing special → back to player choice
         self.phase = PHASE_PLAYER_CHOICE
         self.combat_ui.set_mode("menu")
@@ -386,26 +451,14 @@ class StateCombat(State):
         if action is None:
             return
         
-        if action["type"] != "switch":
-            return  # Only accept switch
+        if action["type"] not in ("switch", "replacement"):
+            return  # Only accept switch or replacement
         
-        # Perform switch
-        chosen_pokemon = self.game_manager.player.team.get_pokemon(action["index"])
-        self.combat.switch_player_pokemon(chosen_pokemon)
-        self.player_pokemon = chosen_pokemon
-        
-        # Update view
-        self.combat_ui.set_state(
-            player_pokemon=self.player_pokemon,
-            opponent_pokemon=self.combat.opponent_pokemon,
-            combat_type=self.combat_type
+        # Execute switch (will also process opponent's turn)
+        events = self.combat.execute_turn(
+            {"type": "switch", "index": action["index"]}
         )
-        
-        # Switch message
-        self.combat_ui.set_events([
-            {"type": "message", "text": f"Go {chosen_pokemon.name} !"}
-        ])
-        self.phase = PHASE_EXECUTION
+        self._process_events(events)
     
     
     # -------------------------------------------------------------------------
@@ -415,25 +468,34 @@ class StateCombat(State):
     def _begin_combat_end(self, result):
         """
         Prepare combat end phase.
-        
+
         Args:
             result: "victory", "defeat", "flee", "capture"
         """
         self.final_result = result
+        self.pending_capture = False
         end_events = []
-        
+
         if result == "victory":
             end_events = self._prepare_victory()
-        
+            # Offer capture after victory if player has pokeballs
+            self.pending_capture = (
+                self.game_manager.player.inventory.has_pokeballs()
+                and self.opponent_pokemon is not None
+            )
+
         elif result == "defeat":
             end_events = self._prepare_defeat()
-        
+
         # Flee and capture have no additional events
-        
+
         if len(end_events) > 0:
             self.combat_ui.set_events(end_events)
             self.phase = PHASE_EXECUTION
             self.waiting_for_end = True
+        elif self.pending_capture:
+            self.pending_capture = False
+            self._start_capture_prompt()
         else:
             self.phase = PHASE_END
     
@@ -450,19 +512,16 @@ class StateCombat(State):
         
         # --- CREDITS (trainer only) ---
         if self.combat_type == "trainer" and self.trainer is not None:
-            credits = self.trainer.get_reward()
+            credits = self.trainer.reward_credits
             player.credits += credits
             events.append({
                 "type": "message",
                 "text": f"Vous avez gagné {credits} crédits !"
             })
-            
-            # Mark trainer as defeated
-            player.add_defeated_trainer(self.trainer.id)
         
         # --- EVOLUTIONS ---
         for pokemon in player.team.get_all():
-            if pokemon.can_evolve():
+            if pokemon.can_evolve:
                 self.pending_evolutions.append(pokemon)
         
         return events
@@ -534,9 +593,71 @@ class StateCombat(State):
     
     
     # -------------------------------------------------------------------------
+    # CAPTURE PHASE (post-victory)
+    # -------------------------------------------------------------------------
+
+    def _start_capture_prompt(self):
+        """Show the post-victory capture prompt."""
+        self.combat_ui.set_events([{
+            "type": "message",
+            "text": f"Capturer {self.opponent_pokemon.name} ? [Espace] Oui  [Échap] Non"
+        }])
+        self.phase = PHASE_CAPTURE
+
+    def _handle_capture_choice(self, event):
+        """Handle the capture Yes/No prompt."""
+        if event.key == pygame.K_SPACE:
+            self._do_post_victory_capture()
+        elif event.key == pygame.K_ESCAPE:
+            self._finish_capture_phase()
+
+    def _do_post_victory_capture(self):
+        """Capture the defeated opponent (guaranteed, consumes one pokeball)."""
+        player = self.game_manager.player
+        balls = player.inventory.get_by_category("pokeball")
+        ball = balls[0][0]
+        player.inventory.remove(ball.id, 1)
+
+        if not player.team.is_full:
+            player.team.add(self.opponent_pokemon)
+            destination = "team"
+        else:
+            player.storage.add(self.opponent_pokemon)
+            destination = "storage"
+
+        player.pokedex.register_captured(self.opponent_pokemon.id)
+
+        capture_events = [{
+            "type": "message",
+            "text": f"{self.opponent_pokemon.name} a été capturé !"
+        }]
+        if destination == "storage":
+            capture_events.append({
+                "type": "message",
+                "text": f"L'équipe est pleine. {self.opponent_pokemon.name} a été envoyé au stockage."
+            })
+        self.combat_ui.set_events(capture_events)
+        self.phase = PHASE_EXECUTION
+        self.waiting_for_end = True
+
+    def _finish_capture_phase(self):
+        """Skip capture and proceed to evolutions or end."""
+        if self.pending_evolutions:
+            pokemon = self.pending_evolutions[self.evolution_index]
+            evolution_name = pokemon.get_evolution_name()
+            self.combat_ui.set_events([{
+                "type": "message",
+                "text": f"{pokemon.name} veut évoluer en {evolution_name} ! [Entrée] Oui  [Échap] Non"
+            }])
+            self.phase = PHASE_EVOLUTION
+        else:
+            self.phase = PHASE_END
+
+
+    # -------------------------------------------------------------------------
     # END PHASE
     # -------------------------------------------------------------------------
-    
+
     def _handle_end(self, event):
         """Handle end phase (Space to quit)."""
         if event.key == pygame.K_SPACE:
@@ -546,8 +667,9 @@ class StateCombat(State):
     def _quit_combat(self):
         """Pop StateCombat to return to exploration."""
         # Trainer callback if victory
-        if self.final_result == "victory" and self.trainer is not None:
-            self.trainer.on_defeat()
+        if hasattr(self, 'final_result') and self.final_result == "victory" and self.trainer is not None:
+            # Trainer's on_defeat will be called by the combat system
+            pass
         
         # Return to exploration
         self.game_manager.state_manager.pop()

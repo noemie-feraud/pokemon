@@ -104,7 +104,6 @@ class StateTournament(State):
                 self.game_manager.audio_manager.play_music("victory")
             else:
                 self.phase = PHASE_ROUND_RESULT
-        
         else:
             # Defeat
             self.tournament.register_result(False)
@@ -146,9 +145,21 @@ class StateTournament(State):
         
         opponent = self.opponents[self.current_round]
         
+        # Get first valid Pokemon from opponent's team
+        first_pokemon = None
+        for pokemon in opponent.team.pokemon:
+            if not pokemon.is_ko:
+                first_pokemon = pokemon
+                break
+        
+        if first_pokemon is None:
+            # Should not happen, but just in case
+            print("Warning: Opponent has no valid Pokemon!")
+            return
+        
         combat = StateCombat(
             self.game_manager,
-            opponent_pokemon=opponent.get_first_valid(),
+            opponent_pokemon=first_pokemon,
             combat_type="trainer",
             trainer=opponent
         )
@@ -382,7 +393,7 @@ class StateTournament(State):
         screen.blit(overlay, (0, 0))
         
         # Victory message
-        round_name = ROUND_NAMES[self.current_round - 1]  # -1 because we already incremented
+        round_name = ROUND_NAMES[self.current_round - 1] if self.current_round > 0 else ROUND_NAMES[0]
         text = f"{round_name} remportée !"
         surface = self.font_title.render(text, True, (100, 255, 100))
         x = (SCREEN_WIDTH - surface.get_width()) // 2
@@ -440,7 +451,7 @@ class StateTournament(State):
         overlay.set_alpha(150)
         screen.blit(overlay, (0, 0))
         
-        round_name = ROUND_NAMES[self.current_round]
+        round_name = ROUND_NAMES[self.current_round] if self.current_round < NUM_ROUNDS else ROUND_NAMES[-1]
         text = f"Défaite en {round_name}..."
         surface = self.font_title.render(text, True, (255, 100, 100))
         x = (SCREEN_WIDTH - surface.get_width()) // 2

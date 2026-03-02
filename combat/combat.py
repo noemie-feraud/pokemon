@@ -267,8 +267,8 @@ class Combat:
         if opponent_priority:
             return [(opponent_action, "opponent"), (player_action, "player")]
         
-        # Both attack → random
-        if random.random() < 0.5:
+        # Both attack → 80% player first
+        if random.random() < 0.8:
             return [(player_action, "player"), (opponent_action, "opponent")]
         else:
             return [(opponent_action, "opponent"), (player_action, "player")]

@@ -8,7 +8,7 @@
 
 import json
 import os
-from entities.trainer import Trainer
+from entities.npc_trainer import NPCTrainer as Trainer
 from config.settings import TOURNAMENT_ENTRY_FEE
 
 

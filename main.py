@@ -1,21 +1,11 @@
-# =============================================================================
-# MAIN.PY - GAME ENTRY POINT
-# =============================================================================
-#
-# This file is the unique entry point of the game.
-# It initializes Pygame, creates the Game object, and starts the main loop.
-#
-# Usage: python main.py
-
-# =============================================================================
-# DEPENDENCY CHECK
-# =============================================================================
-#
-# Verify that required libraries are installed before anything else.
-# If an import fails, display a clear message and exit.
-
 import sys
 import os
+
+# Force UTF-8 encoding for Windows console (supports emojis in print statements)
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if sys.stderr.encoding != 'utf-8':
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
 try:
     import pygame
@@ -31,21 +21,12 @@ except ImportError:
     print("Install it with: pip install pytmx")
     sys.exit(1)
 
-# =============================================================================
-# PROJECT IMPORTS
-# =============================================================================
+
 
 from core.game import Game
 from config.settings import SCREEN_WIDTH, SCREEN_HEIGHT, FPS, WINDOW_TITLE
 
 
-# =============================================================================
-# FOLDER VERIFICATION
-# =============================================================================
-#
-# Ensure required folders exist.
-# Critical folders must exist (data/, assets/).
-# Auto-created folders are created if missing (saves/).
 
 def check_folders():
     """Verify that all necessary directories exist."""
@@ -65,13 +46,6 @@ def check_folders():
             os.makedirs(folder)
             print(f"Created missing folder: {folder}")
 
-
-# =============================================================================
-# PYGAME INITIALIZATION
-# =============================================================================
-#
-# Initialize all Pygame modules (video, audio, events).
-# Create the game window with dimensions from settings.
 
 def init_pygame():
     """Initialize Pygame and create the game window."""
@@ -96,15 +70,6 @@ def init_pygame():
     
     return screen, clock
 
-
-# =============================================================================
-# MAIN FUNCTION
-# =============================================================================
-#
-# 1. Check folders
-# 2. Initialize Pygame
-# 3. Create and run Game
-# 4. Cleanup on exit
 
 def main():
     """Main game function."""
@@ -137,10 +102,6 @@ def main():
     
     print("Game terminated.")
 
-
-# =============================================================================
-# ENTRY POINT
-# =============================================================================
 
 if __name__ == "__main__":
     main()

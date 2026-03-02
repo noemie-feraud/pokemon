@@ -72,7 +72,12 @@ class Pokemon:
         # Number limited by evolution stage.
         self.attacks = data.get("attacks", [])
         max_attacks = ATTACKS_PER_STAGE[self.evolution_stage]
-        self.attacks = self.attacks[:max_attacks]
+        # Auto-populate from all_attacks if no explicit attacks provided
+        if not self.attacks:
+            all_atk = data.get("all_attacks", [])
+            self.attacks = all_atk[:max_attacks]
+        else:
+            self.attacks = self.attacks[:max_attacks]
         
         # --- EVOLUTION ---
         # dict {"to": evolution_id, "level": required_level}
@@ -379,14 +384,23 @@ class Pokemon:
     
     
     def get_front_sprite(self):
-        """Load and return front sprite (for UI)."""
-        # This would be implemented with pygame, but we keep it simple
-        # Actual loading is done by CombatUI
+        """Load and return front sprite surface, or None if unavailable."""
+        import os, pygame
+        if self.sprite_front and os.path.exists(self.sprite_front):
+            try:
+                return pygame.image.load(self.sprite_front).convert_alpha()
+            except Exception:
+                pass
         return None
-    
-    
+
     def get_back_sprite(self):
-        """Load and return back sprite (for UI)."""
+        """Load and return back sprite surface, or None if unavailable."""
+        import os, pygame
+        if self.sprite_back and os.path.exists(self.sprite_back):
+            try:
+                return pygame.image.load(self.sprite_back).convert_alpha()
+            except Exception:
+                pass
         return None
     
     
@@ -434,10 +448,43 @@ class Pokemon:
         }
     
     
+    @classmethod
+    def from_data(cls, pokemon_id, level):
+        """
+        Create a Pokemon from pokemon.json by ID at a given level.
+
+        Args:
+            pokemon_id: integer ID
+            level: starting level
+        Returns:
+            Pokemon instance ready to use
+        """
+        import json
+        from config.settings import POKEMON_DATA_FILE
+
+        with open(POKEMON_DATA_FILE, "r", encoding="utf-8") as f:
+            all_pokemon = json.load(f)
+
+        data = None
+        for poke in all_pokemon:
+            if poke["id"] == pokemon_id:
+                data = poke.copy()
+                break
+
+        if data is None:
+            raise ValueError(f"Pokemon ID {pokemon_id} not found in pokemon.json")
+
+        data["level"] = level
+        pokemon = cls(data)
+        pokemon.recalc_stats()
+        pokemon.current_hp = pokemon.max_hp
+        return pokemon
+
+
     # -------------------------------------------------------------------------
     # SPECIAL METHODS
     # -------------------------------------------------------------------------
-    
+
     def __str__(self):
         """Debug representation."""
         types_str = " / ".join(self.types)

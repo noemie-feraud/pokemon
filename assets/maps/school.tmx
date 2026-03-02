@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<map version="1.10" tiledversion="1.11.2" orientation="orthogonal" renderorder="right-down" width="10" height="4" tilewidth="32" tileheight="32" infinite="0" nextlayerid="6" nextobjectid="17">
+<map version="1.10" tiledversion="1.11.2" orientation="orthogonal" renderorder="right-down" width="10" height="4" tilewidth="32" tileheight="32" infinite="0" nextlayerid="6" nextobjectid="26">
  <tileset firstgid="1" source="tilesets/school.tsx"/>
  <layer id="1" name="Ground" width="10" height="4">
   <data encoding="csv">
@@ -18,30 +18,43 @@
 </data>
  </layer>
  <objectgroup id="3" name="Collisions">
-  <object id="1" x="25" y="35" width="49" height="25.5"/>
-  <object id="2" x="25" y="72.75" width="49.75" height="25.25"/>
-  <object id="3" x="99.75" y="87" width="25.75" height="26"/>
-  <object id="4" x="105.5" y="79.75" width="23.25" height="7"/>
-  <object id="5" x="117.75" y="76" width="8.5" height="2.75"/>
-  <object id="6" x="125.25" y="53.75" width="12" height="62"/>
-  <object id="7" x="175.75" y="14.5" width="11.5" height="76.75"/>
-  <object id="8" x="187" y="76.25" width="24.25" height="15.5"/>
-  <object id="9" x="188.25" y="102" width="10.25" height="12.5"/>
-  <object id="10" x="200.75" y="91.5" width="11" height="24"/>
-  <object id="11" x="262" y="35.25" width="12.5" height="12"/>
-  <object id="12" x="189" y="31.5" width="9" height="10.5"/>
-  <object id="13" x="189" y="56.25" width="8.75" height="10.25"/>
-  <object id="14" x="186.5" y="0.25" width="95.5" height="25"/>
-  <object id="15" x="0.5" y="0.25" width="175.5" height="26"/>
+  <!-- Mur du haut (rangée 0 entière) -->
+  <object id="1" x="0" y="0" width="320" height="32"/>
+  <!-- Bureaux gauche rangées 1-2 (cols 0-1) -->
+  <object id="2" x="0" y="32" width="64" height="64"/>
+  <!-- Escaliers cols 3-4, rangée 1 seulement (rangée 2 reste libre pour naviguer) -->
+  <object id="5" x="96" y="32" width="64" height="32"/>
+  <!-- Meuble central col 5, rangée 1 seulement -->
+  <object id="6" x="160" y="32" width="32" height="32"/>
+  <!-- Décoration col 8, rangée 1 -->
+  <object id="8" x="256" y="32" width="32" height="32"/>
+  <!-- Mur droit (col 9) -->
+  <object id="21" x="288" y="0" width="32" height="128"/>
  </objectgroup>
  <objectgroup id="4" name="Transitions">
-  <object id="16" x="168.25" y="112.25">
+  <object id="16" x="158.25" y="102.25">
    <properties>
     <property name="spawn_x" type="int" value="8"/>
     <property name="spawn_y" type="int" value="3"/>
     <property name="target_zone" value="&quot;campus&quot;"/>
    </properties>
   </object>
+  <object id="17" x="102.5" y="99.25">
+   <properties>
+    <property name="spawn_x" type="int" value="4"/>
+    <property name="spawn_y" type="int" value="3"/>
+    <property name="target_zone" value="&quot;school_floor&quot;"/>
+   </properties>
+  </object>
  </objectgroup>
- <objectgroup id="5" name="Spawns"/>
+ <objectgroup id="5" name="Spawns">
+  <object id="24" x="85" y="50">
+   <properties>
+    <property name="npc_name" value="&quot;Akram&quot;"/>
+    <property name="spawn_type" value="&quot;professor&quot;"/>
+    <property name="sprite" value="&quot;akram&quot;"/>
+    <property name="gives_starter" type="bool" value="true"/>
+   </properties>
+  </object>
+ </objectgroup>
 </map>

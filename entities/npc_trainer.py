@@ -39,7 +39,8 @@ class NPCTrainer(NPC):
         # --- COMBAT ---
         self.battle_level = data.get("battle_level", 1)
         self.reward_credits = data.get("reward_credits", 20)
-        
+        self.level_label = data.get("level", "B1")
+
         # --- POKEMON TEAM ---
         # Each entry in "team" has pokemon_id and level.
         # Load full data from pokemon.json.
@@ -54,6 +55,16 @@ class NPCTrainer(NPC):
         # Vision rectangle calculated based on direction
         self.vision_rect = self._calculate_vision_rect()
         
+        # If no dialogues were provided in data, load from central trainer_dialogues.py
+        if "challenge" not in self.dialogues:
+            try:
+                from data.trainer_dialogues import TRAINER_DIALOGUES
+                trainer_dlg = TRAINER_DIALOGUES.get(self.name)
+                if trainer_dlg:
+                    self.dialogues = trainer_dlg
+            except Exception:
+                pass
+
         # --- GAME MANAGER REFERENCE ---
         # Stored temporarily during on_interact() so on_dialogue_end() can access it
         self._game_manager_ref = None
@@ -66,44 +77,79 @@ class NPCTrainer(NPC):
     def _create_team(self):
         """
         Create trainer's Pokemon team from JSON data.
-        
-        For each entry in self.team_data:
-        1. Load Pokemon data from pokemon.json via ID
-        2. Set correct level
-        3. Create Pokemon instance
-        4. Add to Team
-        
-        If file not available, return empty team.
+        If no team_data defined (e.g. spawned from map), generate a default team.
         """
+        if not self.team_data:
+            return self._generate_default_team()
+
         pokemon_list = []
-        
+
         try:
             with open(POKEMON_DATA_FILE, "r") as f:
                 all_pokemon = json.load(f)
-            
-            # Index by id for quick access
+
             index = {}
             for poke in all_pokemon:
                 index[poke["id"]] = poke
-            
+
             for entry in self.team_data:
                 pokemon_id = entry["pokemon_id"]
                 level = entry["level"]
-                
+
                 if pokemon_id in index:
-                    # Copy data to avoid modifying original
                     poke_data = index[pokemon_id].copy()
                     poke_data["level"] = level
-                    
+
                     pokemon = Pokemon(poke_data)
                     pokemon.recalc_stats()
-                    pokemon.current_hp = pokemon.max_hp  # full health
-                    
+                    pokemon.current_hp = pokemon.max_hp
+
                     pokemon_list.append(pokemon)
-        
+
         except Exception:
             print(f"Warning: Could not load team for trainer {self.name}")
-        
+
+        return Team(pokemon_list)
+
+
+    def _generate_default_team(self):
+        """
+        Generate a random default team when no explicit team data is given.
+        Team size and level range depend on the trainer's level_label.
+        """
+        import random
+
+        # level_label → (team_size, min_level, max_level)
+        level_map = {
+            "B1": (1, 5,  10),
+            "B2": (2, 10, 15),
+            "B3": (2, 15, 20),
+            "M1": (3, 20, 25),
+            "M2": (3, 25, 30),
+        }
+        count, min_lvl, max_lvl = level_map.get(self.level_label, (1, 5, 10))
+
+        pokemon_list = []
+        try:
+            with open(POKEMON_DATA_FILE, "r") as f:
+                all_pokemon = json.load(f)
+
+            candidates = [p for p in all_pokemon if p.get("id", 0) > 0]
+            if not candidates:
+                return Team([])
+
+            chosen = random.sample(candidates, min(count, len(candidates)))
+            for poke_data in chosen:
+                data = poke_data.copy()
+                data["level"] = random.randint(min_lvl, max_lvl)
+                pokemon = Pokemon(data)
+                pokemon.recalc_stats()
+                pokemon.current_hp = pokemon.max_hp
+                pokemon_list.append(pokemon)
+
+        except Exception:
+            print(f"Warning: Could not generate default team for trainer {self.name}")
+
         return Team(pokemon_list)
     
     
@@ -164,25 +210,26 @@ class NPCTrainer(NPC):
     
     def is_player_in_vision(self, player, game_manager):
         """
-        Check if player is in trainer's vision range.
-        
-        Conditions for combat trigger:
-        1. Player is in vision_rect
-        2. Trainer has NOT been defeated yet
-        
+        Check if player is in trainer's vision range (all 4 directions).
+
         Args:
             player: Player object (uses collision rect)
             game_manager: to check if trainer already defeated
-        
+
         Returns:
             True if combat should trigger, False otherwise
         """
-        # Already defeated? No more spotting.
         if game_manager.player.is_trainer_defeated(self.id):
             return False
-        
-        # Check if player rect touches vision rect
-        return self.vision_rect.colliderect(player.rect)
+
+        range_px = self.vision_range * TILE_SIZE
+        vision_rects = [
+            pygame.Rect(self.x, self.y - range_px, TILE_SIZE, range_px),       # up
+            pygame.Rect(self.x, self.y + TILE_SIZE, TILE_SIZE, range_px),       # down
+            pygame.Rect(self.x - range_px, self.y, range_px, TILE_SIZE),        # left
+            pygame.Rect(self.x + TILE_SIZE, self.y, range_px, TILE_SIZE),       # right
+        ]
+        return any(r.colliderect(player.rect) for r in vision_rects)
     
     
     def get_dialogue(self):
@@ -201,10 +248,10 @@ class NPCTrainer(NPC):
         if self._game_manager_ref is not None:
             if self._game_manager_ref.player.is_trainer_defeated(self.id):
                 return self.dialogues.get("already_beaten",
-                    ["You already beat me, no need to rub it in!"])
-        
+                    ["T'as déjà gagné contre moi...", "Pas la peine de te vanter."])
+
         return self.dialogues.get("challenge",
-            ["Hey! Get ready to battle!"])
+            ["Hé ! Prépare-toi à combattre !"])
     
     
     def on_interact(self, game_manager):
@@ -275,11 +322,11 @@ class NPCTrainer(NPC):
         game_manager.audio_manager.play_music("victory", loop=False)
         
         # Defeat dialogue
-        lines = self.dialogues.get("defeat", ["Well played..."])
-        
+        lines = self.dialogues.get("defeat", ["Bien joué..."])
+
         # Add credits message
         final_lines = lines.copy()
-        final_lines.append(f"You gained {self.reward_credits} credits!")
+        final_lines.append(f"Tu gagnes {self.reward_credits} crédits !")
         
         from states.state_dialogue import StateDialogue
         
@@ -308,8 +355,8 @@ class NPCTrainer(NPC):
         game_manager.audio_manager.play_music("defeat", loop=False)
         
         # Defeat dialogue
-        lines = ["All your Pokemon are KO...",
-                 "You're sent back to the Pokemon Center."]
+        lines = ["Tous tes Pokémon sont KO...",
+                 "Tu es renvoyé au Centre Pokémon."]
         
         from states.state_dialogue import StateDialogue
         

@@ -1,19 +1,7 @@
-# =============================================================================
-# MAP_MANAGER.PY - MAP LOADING AND RENDERING
-# =============================================================================
-#
-# This file loads, interprets and displays game maps.
-# It reads .tmx files (created with Tiled), understands layers,
-# and draws everything to the screen.
-
 import pygame
 import pytmx
 from config.settings import TILE_SIZE, MAPS_DIR, ENCOUNTER_RATE
 
-
-# =============================================================================
-# MAP MANAGER CLASS
-# =============================================================================
 
 class MapManager:
     """
@@ -21,12 +9,7 @@ class MapManager:
     for exploration (collisions, grass, transitions, spawns).
     """
     
-    # -------------------------------------------------------------------------
-    # CONSTRUCTOR
-    # -------------------------------------------------------------------------
-    
     def __init__(self):
-        """Initialize empty structures. Nothing loaded until load_map()."""
         self.tmx_data = None
         self.collision_rects = []
         self.grass_rects = []
@@ -34,158 +17,98 @@ class MapManager:
         self.spawns = {}
         self.width = 0
         self.height = 0
+        self.current_map = ""
     
     
-    # -------------------------------------------------------------------------
-    # PUBLIC METHODS
-    # -------------------------------------------------------------------------
-    
-    def load_map(self, map_name, camera):
-        """
-        Load a map from a .tmx file.
-        Called when player enters a zone (start of game, zone transition).
-        
-        Args:
-            map_name: "campus", "outside", or "arena"
-            camera: Camera object to inform about map size
-        """
+    def load_map(self, map_name, camera, transition_point_size=None):
         import os
         filepath = os.path.join(MAPS_DIR, map_name + ".tmx")
-        
+
+        if not os.path.exists(filepath):
+            print(f"Warning: Map file not found: {filepath}")
+            return False
+
         try:
-            self.tmx_data = pytmx.load_pygame(filepath)
-        except Exception:
-            print(f"Warning: Could not load map: {filepath}")
-            return
-        
-        # Map size in pixels
+            new_tmx = pytmx.load_pygame(filepath)
+        except Exception as e:
+            print(f"Warning: Could not load map: {filepath} — {e}")
+            return False
+
+        # Only commit the change if loading succeeded
+        self.current_map = map_name
+        self.tmx_data = new_tmx
         self.width = self.tmx_data.width * TILE_SIZE
         self.height = self.tmx_data.height * TILE_SIZE
-        
-        # Inform camera
+
         camera.set_map_size(self.tmx_data.width, self.tmx_data.height)
-        
-        # Extract layer data
+
         self._parse_collisions()
         self._parse_grass()
-        self._parse_transitions()
+        self._parse_transitions(transition_point_size or TILE_SIZE)
         self._parse_spawns()
+        return True
     
     
     def draw(self, screen, camera):
-        """
-        Draw visible layers of the map on screen.
-        Called every frame by state_exploration.py.
-        
-        Optimization: use camera.get_visible_area() to only draw
-        tiles that are in the camera's view.
-        
-        Args:
-            screen: Pygame surface
-            camera: Camera object for offset and visible area
-        """
         if self.tmx_data is None:
             return
-        
-        # Get visible area
+
         start_x, start_y, end_x, end_y = camera.get_visible_area()
-        
-        # Layers to draw (in order)
-        visible_layers = ["Ground", "Decoration"]
-        
-        for layer_name in visible_layers:
-            # Find layer in tmx_data
-            for layer in self.tmx_data.visible_layers:
-                if isinstance(layer, pytmx.TiledTileLayer) and layer.name == layer_name:
-                    
-                    # Draw only visible tiles
-                    for x in range(start_x, end_x):
-                        for y in range(start_y, end_y):
-                            image = self.tmx_data.get_tile_image(x, y, layer)
-                            
-                            if image:
-                                # Convert map position → screen position
-                                screen_x, screen_y = camera.apply(x * TILE_SIZE, y * TILE_SIZE)
-                                screen.blit(image, (screen_x, screen_y))
+
+        for layer in self.tmx_data.visible_layers:
+            if not isinstance(layer, pytmx.TiledTileLayer):
+                continue
+            for x, y, image in layer.tiles():
+                if start_x <= x < end_x and start_y <= y < end_y:
+                    screen_x, screen_y = camera.apply(x * TILE_SIZE, y * TILE_SIZE)
+                    screen.blit(image, (screen_x, screen_y))
     
     
     def is_collision(self, tile_x, tile_y):
-        """
-        Check if a given tile position has a collision.
-        
-        Args:
-            tile_x, tile_y: tile coordinates
-        
-        Returns:
-            True if collision, False otherwise
-        """
-        # Check map bounds
         if tile_x < 0 or tile_y < 0:
             return True
         if tile_x >= self.tmx_data.width or tile_y >= self.tmx_data.height:
             return True
         
-        # Check collision layer
+        margin = 8 if self.current_map == "campus" else 12
         for obj in self.collision_rects:
-            # Convert tile to pixel rect
-            tile_rect = pygame.Rect(tile_x * TILE_SIZE, tile_y * TILE_SIZE,
-                                   TILE_SIZE, TILE_SIZE)
+            tile_rect = pygame.Rect(
+                tile_x * TILE_SIZE + margin,
+                tile_y * TILE_SIZE + margin,
+                TILE_SIZE - margin * 2,
+                TILE_SIZE - margin * 2
+            )
             if tile_rect.colliderect(obj):
                 return True
-        
         return False
     
     
     def is_grass(self, tile_x, tile_y):
-        """
-        Check if player is on a grass tile (wild encounter possible).
-        
-        Args:
-            tile_x, tile_y: tile coordinates
-        
-        Returns:
-            True if on grass, False otherwise
-        """
         tile_rect = pygame.Rect(tile_x * TILE_SIZE, tile_y * TILE_SIZE,
                                TILE_SIZE, TILE_SIZE)
-        
         for grass_rect in self.grass_rects:
             if tile_rect.colliderect(grass_rect):
                 return True
-        
         return False
     
     
     def check_transition(self, tile_x, tile_y):
-        """
-        Check if player is on a transition tile.
-        
-        Args:
-            tile_x, tile_y: tile coordinates
-        
-        Returns:
-            transition dict if on transition, None otherwise
-        """
-        tile_rect = pygame.Rect(tile_x * TILE_SIZE, tile_y * TILE_SIZE,
-                               TILE_SIZE, TILE_SIZE)
-        
+        center_x = tile_x * TILE_SIZE + TILE_SIZE // 2
+        center_y = tile_y * TILE_SIZE + TILE_SIZE // 2
         for transition in self.transitions:
-            if tile_rect.colliderect(transition["rect"]):
+            if transition["rect"].collidepoint(center_x, center_y):
                 return transition
-        
+        return None
+
+    def check_transition_at_px(self, px, py):
+        """Pixel-precise transition check for sub-tile movement."""
+        for transition in self.transitions:
+            if transition["rect"].collidepoint(px, py):
+                return transition
         return None
     
     
     def get_spawn_position(self, spawn_type="player"):
-        """
-        Return spawn position for given type in current map.
-        
-        Args:
-            spawn_type: "player", "nurse", "shopkeeper", "trainer", etc.
-        
-        Returns:
-            (x, y) in pixels, or (0,0) if not found
-        """
         if spawn_type in self.spawns and len(self.spawns[spawn_type]) > 0:
             spawn = self.spawns[spawn_type][0]
             return (spawn["x"], spawn["y"])
@@ -193,35 +116,16 @@ class MapManager:
     
     
     def get_spawns_by_type(self, spawn_type):
-        """
-        Return all spawns of a given type.
-        Used by state_exploration.py to place NPCs, trainers, and items.
-        
-        Args:
-            spawn_type: "trainer", "npc", "item", etc.
-        
-        Returns:
-            list of spawn data dicts
-        """
         return self.spawns.get(spawn_type, [])
     
     
     def get_map_size(self):
-        """Return map size in pixels."""
         return (self.width, self.height)
     
     
     def get_npcs_data(self):
-        """
-        Return NPC data from spawns.
-        Used by state_exploration.py to create NPC instances.
-        
-        Returns:
-            list of dicts with NPC data
-        """
         npcs = []
-        # Get all NPC-like spawns
-        for spawn_type in ["nurse", "shopkeeper", "professor", "quest", "trainer", "ambient"]:
+        for spawn_type in ["nurse", "shopkeeper", "professor", "quest", "trainer"]:
             npcs.extend(self.spawns.get(spawn_type, []))
         return npcs
     
@@ -231,11 +135,9 @@ class MapManager:
     # -------------------------------------------------------------------------
     
     def _parse_collisions(self):
-        """Extract collision rectangles from "Collision" layer."""
         self.collision_rects = []
-        
         for layer in self.tmx_data.layers:
-            if layer.name == "Collision":
+            if layer.name in ["Collision", "Collisions"]:
                 if isinstance(layer, pytmx.TiledObjectGroup):
                     for obj in layer:
                         rect = pygame.Rect(obj.x, obj.y, obj.width, obj.height)
@@ -243,9 +145,7 @@ class MapManager:
     
     
     def _parse_grass(self):
-        """Extract grass rectangles from "Grass" layer."""
         self.grass_rects = []
-        
         for layer in self.tmx_data.layers:
             if layer.name == "Grass":
                 if isinstance(layer, pytmx.TiledObjectGroup):
@@ -254,17 +154,28 @@ class MapManager:
                         self.grass_rects.append(rect)
     
     
-    def _parse_transitions(self):
-        """Extract transition rectangles from "Transitions" layer."""
+    def _parse_transitions(self, point_size=None):
+        default = point_size or TILE_SIZE
         self.transitions = []
-        
         for layer in self.tmx_data.layers:
             if layer.name == "Transitions":
                 if isinstance(layer, pytmx.TiledObjectGroup):
                     for obj in layer:
+                        w = obj.width if obj.width > 0 else default
+                        h = obj.height if obj.height > 0 else default
+                        # Point objects (w=h=0 in Tiled): center the rect on the
+                        # object's coordinates so the trigger tile is the one
+                        # where the point was placed, not the tile below-right.
+                        if obj.width == 0 and obj.height == 0:
+                            rx = int(obj.x) - w // 2
+                            ry = int(obj.y) - h // 2
+                        else:
+                            rx, ry = int(obj.x), int(obj.y)
+                        raw_zone = obj.properties.get("target_zone", "")
+                        target_zone = raw_zone.strip('"') if isinstance(raw_zone, str) else raw_zone
                         transition = {
-                            "rect": pygame.Rect(obj.x, obj.y, obj.width, obj.height),
-                            "target_zone": obj.properties.get("target_zone", ""),
+                            "rect": pygame.Rect(rx, ry, w, h),
+                            "target_zone": target_zone,
                             "spawn_x": obj.properties.get("spawn_x", 0),
                             "spawn_y": obj.properties.get("spawn_y", 0)
                         }
@@ -272,22 +183,34 @@ class MapManager:
     
     
     def _parse_spawns(self):
-        """Extract spawn points from "Spawns" layer."""
         self.spawns = {}
-        
         for layer in self.tmx_data.layers:
             if layer.name == "Spawns":
                 if isinstance(layer, pytmx.TiledObjectGroup):
                     for obj in layer:
-                        spawn_type = obj.properties.get("type", "unknown")
-                        
+                        # Strip surrounding quotes added by Tiled ("value" → value)
+                        props = {}
+                        for k, v in obj.properties.items():
+                            props[k] = v.strip('"') if isinstance(v, str) else v
+
+                        spawn_type = props.get("spawn_type", props.get("type", "unknown"))
+
+                        # Snap pixel position to tile grid (Tiled places point
+                        # objects at arbitrary sub-pixel positions).
+                        snapped_x = int(obj.x // TILE_SIZE) * TILE_SIZE
+                        snapped_y = int(obj.y // TILE_SIZE) * TILE_SIZE
                         spawn_data = {
-                            "x": obj.x,
-                            "y": obj.y,
-                            "properties": obj.properties
+                            "id": obj.id,
+                            "x": snapped_x,
+                            "y": snapped_y,
+                            "type": spawn_type,
+                            "name": props.get("npc_name", props.get("name", "NPC")),
                         }
-                        
+                        # Merge remaining props (level, direction, sprite, etc.)
+                        for k, v in props.items():
+                            if k not in ("spawn_type", "npc_name"):
+                                spawn_data.setdefault(k, v)
+
                         if spawn_type not in self.spawns:
                             self.spawns[spawn_type] = []
-                        
                         self.spawns[spawn_type].append(spawn_data)
